@@ -1,0 +1,31 @@
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 运行时数据
+*.db
+*.sqlite3
+resources/thumbnails/
+resources/cache/
+config.json
+emoji_workshop.json
+
+# IDE
+.vscode/
+.idea/
+
+# 打包
+build/
+dist/
+*.spec
+
+# 系统
+.DS_Store
+Thumbs.db

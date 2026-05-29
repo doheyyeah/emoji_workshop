@@ -138,6 +138,15 @@ class StatsPanel(QWidget):
         self.card_tags._value_label.setText(str(tag_count))
         self.card_usage._value_label.setText(str(usage_count))
 
+    @staticmethod
+    def _parse_used_at(used_at_str: str) -> datetime | None:
+        """解析 used_at 时间字符串，兼容多种格式（YYYY-MM-DDTHH:MM:SS.ffffff / YYYY-MM-DD HH:MM:SS）"""
+        try:
+            s = str(used_at_str).replace('T', ' ').split('.')[0]
+            return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return None
+
     def _refresh_trend(self):
         """最近7天使用趋势折线图（本地时间）"""
         self.trend_figure.clear()
@@ -156,10 +165,11 @@ class StatsPanel(QWidget):
             rows = self.db.get_usage_history()
             for row in rows:
                 # row: (id, image_id, used_at)
-                used_at_str = str(row[2])[:10]  # YYYY-MM-DD
+                dt = self._parse_used_at(row[2])
                 try:
-                    d = datetime.strptime(used_at_str, "%Y-%m-%d").date()
-                    day_label = d.strftime("%m-%d")
+                    if dt is None:
+                        continue
+                    day_label = dt.date().strftime("%m-%d")
                     if day_label in dates:
                         counts[day_label] += 1
                 except ValueError:
@@ -187,14 +197,9 @@ class StatsPanel(QWidget):
         try:
             rows = self.db.get_usage_history()
             for row in rows:
-                used_at_str = str(row[2])
-                try:
-                    # 解析时间（格式：YYYY-MM-DDTHH:MM:SS.ffffff 或 YYYY-MM-DD HH:MM:SS）
-                    used_at_str = used_at_str.replace('T', ' ').split('.')[0]
-                    dt = datetime.strptime(used_at_str, "%Y-%m-%d %H:%M:%S")
+                dt = self._parse_used_at(row[2])
+                if dt is not None:
                     hour_counts[dt.hour] += 1
-                except ValueError:
-                    pass
         except Exception:
             pass
 

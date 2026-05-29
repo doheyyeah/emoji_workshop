@@ -318,7 +318,7 @@ class SettingsDialog(QDialog):
         parent = self.parent()
         if parent and hasattr(parent, 'gallery'):
             self.accept()
-            count = parent.gallery._import_folder_path(folder)
+            count = parent.gallery.import_folder_path(folder)
             parent.gallery.load_from_database()
             QMessageBox.information(parent, "导入完成", f"已从最近文件夹导入 {count} 张图片")
 

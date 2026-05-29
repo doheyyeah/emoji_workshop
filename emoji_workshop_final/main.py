@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
         if theme == "dark":
             self.setStyleSheet("""
                 * {
-                    font-family: "Microsoft YaHei UI", "PingFang SC", "Helvetica", sans-serif;
+                    font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
                     font-size: 13px;
                 }
                 QMainWindow { background-color: #1e1e1e; }
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
         else:
             self.setStyleSheet("""
                 * {
-                    font-family: "Microsoft YaHei UI", "PingFang SC", "Helvetica", sans-serif;
+                    font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
                     font-size: 13px;
                 }
                 QMainWindow { background-color: #f5f5f5; }

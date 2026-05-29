@@ -52,6 +52,7 @@ class GalleryView(QWidget):
         self.thumb_service = ThumbnailService()
         self.config = ConfigManager()
         self.current_images: list[ImageModel] = []
+        self._pending_models: list = []   # 拖拽/导入时暂存待生成缩略图的模型
         self.setAcceptDrops(True)
         self.setup_ui()
         self.load_from_database()
@@ -186,7 +187,7 @@ class GalleryView(QWidget):
             return
         
         self._pending_models = []
-        added_count = self._import_folder_path(folder)
+        added_count = self.import_folder_path(folder)
         # 记录最近文件夹
         self.config.add_recent_folder(folder)
         
@@ -197,7 +198,7 @@ class GalleryView(QWidget):
         self.info_label.setText(f"成功导入 {added_count} 张图片，正在生成缩略图...")
         self._generate_thumbnails_async(self._pending_models)
     
-    def _import_folder_path(self, folder: str) -> int:
+    def import_folder_path(self, folder: str) -> int:
         """内部方法：扫描文件夹并入库，返回导入数量"""
         self.info_label.setText("正在扫描文件夹...")
         QApplication.processEvents()
@@ -390,7 +391,7 @@ class GalleryView(QWidget):
             
             if path.is_dir():
                 # 文件夹：批量扫描
-                count = self._import_folder_path(str(path))
+                count = self.import_folder_path(str(path))
                 added_count += count
                 folder_count += 1
                 all_models.extend(getattr(self, '_pending_models', []))

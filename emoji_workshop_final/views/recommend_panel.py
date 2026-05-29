@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 from controllers.recommend_controller import RecommendController
 from services.database_service import DatabaseService
 from services.thumbnail_service import ThumbnailService
+from services.clipboard_service import ClipboardService
 
 
 class RecommendPanel(QWidget):
@@ -151,12 +152,18 @@ class RecommendPanel(QWidget):
         if not file_path or not Path(file_path).exists():
             return
 
-        pixmap = QPixmap(file_path)
-        if pixmap.isNull():
-            return
-
-        QApplication.clipboard().setPixmap(pixmap)
-        self.hint_label.setText("✅ 已复制到剪贴板！")
+        if ClipboardService.copy_image(file_path):
+            if ClipboardService.is_animated(file_path):
+                msg = '已复制动图到剪贴板，粘贴到微信/QQ 时请选"以图片形式发送"以保留动画'
+            else:
+                msg = "已复制图片到剪贴板，可粘贴到聊天框"
+            self.hint_label.setText(f"✅ {msg}")
+            # 通知主窗口状态栏
+            main_win = self.window()
+            if hasattr(main_win, 'statusBar'):
+                main_win.statusBar().showMessage(msg, 2000)
+        else:
+            self.hint_label.setText("❌ 复制失败")
         # 3 秒后恢复提示文字
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(3000, lambda: self.hint_label.setText("双击结果可复制到剪贴板"))

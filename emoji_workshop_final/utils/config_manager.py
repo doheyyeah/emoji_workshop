@@ -57,7 +57,8 @@ class ConfigManager:
                 "auto_save": True,          # 修改后自动保存配置
                 "confirm_delete": True,     # 删除前确认
                 "recent_folders": [],       # 最近导入的文件夹（最多10个）
-                "recent_files": []          # 最近打开的文件（最多10个）
+                "recent_files": [],         # 最近打开的文件（最多10个）
+                "search_history": []        # 搜索历史（最多20条）
             },
             "stats": {
                 "total_imported": 0,        # 累计导入图片数
@@ -133,6 +134,28 @@ class ConfigManager:
         recent.insert(0, folder_path)
         recent = recent[:10]
         self.set("behavior.recent_folders", recent)
+
+    def get_recent_folders(self) -> list:
+        """获取最近文件夹列表"""
+        return self.get("behavior.recent_folders", [])
+
+    def add_search_history(self, keyword: str) -> None:
+        """添加搜索历史（去重，最多保留20条）"""
+        if not keyword:
+            return
+        history = self.get("behavior.search_history", [])
+        history = [k for k in history if k != keyword]
+        history.insert(0, keyword)
+        history = history[:20]
+        self.set("behavior.search_history", history)
+
+    def get_search_history(self) -> list:
+        """获取搜索历史列表"""
+        return self.get("behavior.search_history", [])
+
+    def clear_search_history(self) -> None:
+        """清空搜索历史"""
+        self.set("behavior.search_history", [])
 
     def increment_stat(self, stat_key: str) -> None:
         """递增统计计数器"""

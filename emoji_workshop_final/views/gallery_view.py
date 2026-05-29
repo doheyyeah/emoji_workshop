@@ -4,16 +4,18 @@ from typing import List
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QLabel, QPushButton, QFileDialog,
-    QMessageBox, QSplitter, QProgressBar, QLineEdit
+    QMessageBox, QSplitter, QProgressBar, QComboBox, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QPixmap, QIcon
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services.database_service import DatabaseService
 from services.thumbnail_service import ThumbnailService
+from services.clipboard_service import ClipboardService
 from models.image_model import ImageModel
 from utils.file_scanner import FileScanner
+from utils.config_manager import ConfigManager
 
 
 class ThumbnailWorker(QThread):
@@ -38,34 +40,49 @@ class ThumbnailWorker(QThread):
 
 
 class GalleryView(QWidget):
-    """图片画廊视图：支持缩略图缓存 + 搜索筛选"""
+    """图片画廊视图：支持缩略图缓存 + 搜索筛选 + 拖拽导入 + 多选"""
     
     THUMBNAIL_SIZE = 128
-    image_selected = pyqtSignal(int)  # 发射选中的图片ID
+    image_selected = pyqtSignal(int)          # 单图兼容信号（保留向后兼容）
+    images_selection_changed = pyqtSignal(list)  # 多选信号，发出所有选中的 image_id 列表
 
     def __init__(self, db_service: DatabaseService, parent=None):
         super().__init__(parent)
         self.db = db_service
         self.thumb_service = ThumbnailService()
+        self.config = ConfigManager()
         self.current_images: list[ImageModel] = []
+        self.setAcceptDrops(True)
         self.setup_ui()
         self.load_from_database()
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # === 搜索栏（Day5 新增）===
+        # === 搜索栏（带历史记录下拉框）===
         search_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 搜索表情名称...")
+        self.search_input = QComboBox()
+        self.search_input.setEditable(True)
+        self.search_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.search_input.lineEdit().setPlaceholderText("🔍 搜索表情包...")
+        # 加载搜索历史
+        for kw in self.config.get_search_history():
+            self.search_input.addItem(kw)
+        self.search_input.lineEdit().returnPressed.connect(self.do_search)
+
         self.search_btn = QPushButton("搜索")
         self.search_btn.clicked.connect(self.do_search)
         self.reset_btn = QPushButton("重置")
         self.reset_btn.clicked.connect(self.load_from_database)
+        self.clear_history_btn = QPushButton("🗑")
+        self.clear_history_btn.setFixedWidth(32)
+        self.clear_history_btn.setToolTip("清空搜索历史")
+        self.clear_history_btn.clicked.connect(self._clear_search_history)
         
         search_layout.addWidget(self.search_input)
         search_layout.addWidget(self.search_btn)
         search_layout.addWidget(self.reset_btn)
+        search_layout.addWidget(self.clear_history_btn)
         layout.addLayout(search_layout)
         
         # === 顶部工具栏 ===
@@ -95,14 +112,16 @@ class GalleryView(QWidget):
         # === 主区域 ===
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # 左侧：缩略图列表
+        # 左侧：缩略图列表（多选模式）
         self.list_widget = QListWidget()
         self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
         self.list_widget.setIconSize(QSize(self.THUMBNAIL_SIZE, self.THUMBNAIL_SIZE))
         self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.list_widget.setSpacing(10)
         self.list_widget.setMinimumWidth(400)
-        self.list_widget.itemClicked.connect(self.on_item_clicked)
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list_widget.itemSelectionChanged.connect(self._on_selection_changed)
+        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         
         # 右侧：大图预览
         self.preview_label = QLabel("点击左侧图片预览\n或导入文件夹开始")
@@ -128,11 +147,19 @@ class GalleryView(QWidget):
         layout.addWidget(self.info_label)
     
     def do_search(self):
-        """按名称搜索"""
-        keyword = self.search_input.text().strip()
+        """按名称搜索，并记录历史"""
+        keyword = self.search_input.currentText().strip()
         if not keyword:
             self.load_from_database()
             return
+        
+        # 记录搜索历史
+        self.config.add_search_history(keyword)
+        # 更新下拉列表
+        self.search_input.clear()
+        for kw in self.config.get_search_history():
+            self.search_input.addItem(kw)
+        self.search_input.lineEdit().setText(keyword)
         
         self.list_widget.clear()
         self.current_images = []
@@ -146,23 +173,42 @@ class GalleryView(QWidget):
         self.info_label.setText(f"搜索 '{keyword}' 找到 {len(rows)} 张")
         self.update_stats()
     
+    def _clear_search_history(self):
+        """清空搜索历史"""
+        self.config.clear_search_history()
+        self.search_input.clear()
+        self.search_input.lineEdit().setPlaceholderText("🔍 搜索表情包...")
+    
     def import_folder(self):
         """导入文件夹"""
         folder = QFileDialog.getExistingDirectory(self, "选择表情包文件夹")
         if not folder:
             return
         
+        self._pending_models = []
+        added_count = self._import_folder_path(folder)
+        # 记录最近文件夹
+        self.config.add_recent_folder(folder)
+        
+        if added_count == 0:
+            QMessageBox.information(self, "提示", "未找到支持的图片文件（或文件已全部存在）")
+            return
+        
+        self.info_label.setText(f"成功导入 {added_count} 张图片，正在生成缩略图...")
+        self._generate_thumbnails_async(self._pending_models)
+    
+    def _import_folder_path(self, folder: str) -> int:
+        """内部方法：扫描文件夹并入库，返回导入数量"""
         self.info_label.setText("正在扫描文件夹...")
         QApplication.processEvents()
         
         images_info = FileScanner.scan_folder(folder)
         
         if not images_info:
-            QMessageBox.information(self, "提示", "未找到支持的图片文件")
-            return
+            return 0
         
         added_count = 0
-        new_models = []
+        self._pending_models = []
         for info in images_info:
             image_id = self.db.add_image(**info)
             if image_id:
@@ -176,13 +222,22 @@ class GalleryView(QWidget):
                     width=info['width'],
                     height=info['height']
                 )
-                new_models.append(model)
-        
-        self.info_label.setText(f"成功导入 {added_count} 张图片，正在生成缩略图...")
-        self._generate_thumbnails_async(new_models)
+                self._pending_models.append(model)
+        return added_count
     
-    def _generate_thumbnails_async(self, models: list[ImageModel]):
+    def _import_single_image(self, file_path: str) -> bool:
+        """导入单张图片，返回是否成功"""
+        info = FileScanner.get_image_info(file_path)
+        if not info:
+            return False
+        image_id = self.db.add_image(**info)
+        return image_id is not None
+    
+    def _generate_thumbnails_async(self, models: list):
         """异步生成缩略图"""
+        if not models:
+            self.load_from_database()
+            return
         self.progress_bar.setMaximum(len(models))
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
@@ -247,15 +302,12 @@ class GalleryView(QWidget):
         self.list_widget.addItem(item)
     
     def on_item_clicked(self, item: QListWidgetItem):
-        """点击缩略图"""
+        """点击缩略图（保留向后兼容）"""
         image_id = item.data(Qt.ItemDataRole.UserRole)
         model = next((m for m in self.current_images if m.id == image_id), None)
         
         if not model:
             return
-        
-        # 发射信号（通知标签面板更新）
-        self.image_selected.emit(image_id)
         
         # 显示大图
         pixmap = QPixmap(model.file_path)
@@ -274,6 +326,101 @@ class GalleryView(QWidget):
         self.info_label.setText(
             f"{model.name} | {model.width}x{model.height} | {size_mb:.2f} MB | {model.file_type.upper()}"
         )
+    
+    def _on_selection_changed(self):
+        """多选变化时发射信号，并更新预览"""
+        selected_items = self.list_widget.selectedItems()
+        selected_ids = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
+        
+        # 发射多选信号
+        self.images_selection_changed.emit(selected_ids)
+        
+        # 向后兼容：单选时也发射 image_selected
+        if len(selected_ids) == 1:
+            self.image_selected.emit(selected_ids[0])
+            # 更新预览
+            model = next((m for m in self.current_images if m.id == selected_ids[0]), None)
+            if model:
+                self.on_item_clicked(selected_items[0])
+        elif len(selected_ids) > 1:
+            self.info_label.setText(f"已选中 {len(selected_ids)} 张图片")
+    
+    def _on_item_double_clicked(self, item: QListWidgetItem):
+        """双击复制图片到剪贴板"""
+        image_id = item.data(Qt.ItemDataRole.UserRole)
+        model = next((m for m in self.current_images if m.id == image_id), None)
+        if not model:
+            return
+        
+        if ClipboardService.copy_image(model.file_path):
+            self.db.record_usage(image_id)
+            if ClipboardService.is_animated(model.file_path):
+                msg = '已复制动图到剪贴板，粘贴到微信/QQ 时请选"以图片形式发送"以保留动画'
+            else:
+                msg = "已复制图片到剪贴板，可粘贴到聊天框"
+            # 通知主窗口在状态栏显示
+            main_win = self.window()
+            if hasattr(main_win, 'statusBar'):
+                main_win.statusBar().showMessage(msg, 2000)
+    
+    # ------------------------------------------------------------------
+    # 拖拽导入（Task 1）
+    # ------------------------------------------------------------------
+    
+    def dragEnterEvent(self, event):
+        """接受含 URL 的拖拽事件"""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event):
+        """处理拖拽放入：文件夹或图片文件均可"""
+        supported_exts = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'}
+        urls = event.mimeData().urls()
+        
+        added_count = 0
+        folder_count = 0
+        file_count = 0
+        all_models = []
+        
+        for url in urls:
+            local_path = url.toLocalFile()
+            path = Path(local_path)
+            
+            if path.is_dir():
+                # 文件夹：批量扫描
+                count = self._import_folder_path(str(path))
+                added_count += count
+                folder_count += 1
+                all_models.extend(getattr(self, '_pending_models', []))
+                self.config.add_recent_folder(str(path))
+            elif path.is_file() and path.suffix.lower() in supported_exts:
+                # 单张图片
+                if self._import_single_image(str(path)):
+                    added_count += 1
+                    file_count += 1
+        
+        if added_count > 0:
+            msg_parts = []
+            if folder_count > 0:
+                msg_parts.append(f"{folder_count} 个文件夹")
+            if file_count > 0:
+                msg_parts.append(f"{file_count} 个文件")
+            self.info_label.setText(f"已导入 {added_count} 张图片（来自 {'、'.join(msg_parts)}）")
+            
+            if all_models:
+                self._generate_thumbnails_async(all_models)
+            else:
+                self.load_from_database()
+            
+            # 在主窗口状态栏提示
+            main_win = self.window()
+            if hasattr(main_win, 'statusBar'):
+                main_win.statusBar().showMessage(f"已导入 {added_count} 张图片", 3000)
+        else:
+            self.load_from_database()
+            self.info_label.setText("拖入完成，未发现新图片（可能已存在）")
     
     def filter_by_tags(self, tag_ids: List[int]):
         """按标签筛选（Day5 新增）"""

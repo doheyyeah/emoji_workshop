@@ -1,13 +1,14 @@
 import sys
 from pathlib import Path
-from typing import List, Tuple
+from datetime import datetime, timedelta
+from collections import defaultdict
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QTableWidget, QTableWidgetItem, QHeaderView
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
+    QListWidgetItem, QFrame
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
 
 # Matplotlib 嵌入 PyQt6
 import matplotlib
@@ -16,7 +17,6 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from services.database_service import DatabaseService
@@ -24,269 +24,237 @@ from utils.config_manager import ConfigManager
 
 
 class StatsPanel(QWidget):
-    """数据统计面板：图表 + 表格展示
+    """数据统计面板：核心指标 + 趋势图 + 时段分布 + Top10
 
-    功能：
-    - 图片格式分布饼图
-    - 文件大小分布柱状图
-    - 标签使用频率统计
-    - 月度导入趋势（模拟）
+    保留指标：
+    - 总图片数 / 总标签数 / 总使用次数（三张卡片）
+    - 每日使用趋势折线图（最近7天）
+    - 使用时段分布图（24小时柱状图）
+    - 最常用 Top10 表情（列表 + 缩略图）
+
+    时间统一使用本地时间，精确到分钟。
     """
 
     def __init__(self, db_service: DatabaseService, parent=None):
         super().__init__(parent)
         self.db = db_service
         self.config = ConfigManager()
+        self.thumb_service = None  # 延迟导入避免循环
         self.setup_ui()
         self.refresh_stats()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # === 顶部工具栏 ===
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("📊 数据统计"))
-        toolbar.addStretch()
+        # === 顶部标题 ===
+        title_label = QLabel("📊 数据统计")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 4px 0;")
+        layout.addWidget(title_label)
 
-        self.chart_combo = QComboBox()
-        self.chart_combo.addItems([
-            "格式分布", "大小分布", "标签统计", "导入趋势"
-        ])
-        self.chart_combo.currentIndexChanged.connect(self.refresh_stats)
-        toolbar.addWidget(QLabel("图表类型:"))
-        toolbar.addWidget(self.chart_combo)
+        # === 三个核心数字卡片 ===
+        cards_layout = QHBoxLayout()
+        self.card_images = self._make_card("总图片数", "0")
+        self.card_tags = self._make_card("总标签数", "0")
+        self.card_usage = self._make_card("总使用次数", "0")
+        cards_layout.addWidget(self.card_images)
+        cards_layout.addWidget(self.card_tags)
+        cards_layout.addWidget(self.card_usage)
+        layout.addLayout(cards_layout)
 
-        refresh_btn = QPushButton("🔄 刷新")
-        refresh_btn.clicked.connect(self.refresh_stats)
-        toolbar.addWidget(refresh_btn)
+        # === 每日使用趋势（最近7天）===
+        self.trend_figure = Figure(figsize=(7, 2.5), dpi=90)
+        self.trend_figure.patch.set_facecolor('#1e1e1e')
+        self.trend_canvas = FigureCanvas(self.trend_figure)
+        layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
+        layout.addWidget(self.trend_canvas)
 
-        layout.addLayout(toolbar)
+        # === 时段分布图（24小时）===
+        self.hour_figure = Figure(figsize=(7, 2.5), dpi=90)
+        self.hour_figure.patch.set_facecolor('#1e1e1e')
+        self.hour_canvas = FigureCanvas(self.hour_figure)
+        layout.addWidget(QLabel("⏰ 使用时段分布（24小时）"))
+        layout.addWidget(self.hour_canvas)
 
-        # === 图表区域 ===
-        self.figure = Figure(figsize=(8, 5), dpi=100)
-        self.figure.patch.set_facecolor('#1e1e1e')
-        self.canvas = FigureCanvas(self.figure)
-        layout.addWidget(self.canvas)
+        # === 最常用 Top10 ===
+        layout.addWidget(QLabel("🏆 最常用 Top 10 表情"))
+        self.top10_list = QListWidget()
+        self.top10_list.setMaximumHeight(180)
+        layout.addWidget(self.top10_list)
 
-        # === 数据表格 ===
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["项目", "数值", "占比"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setMaximumHeight(200)
-        layout.addWidget(self.table)
+        # === 最近刷新时间 ===
+        self.refresh_label = QLabel("")
+        self.refresh_label.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(self.refresh_label)
 
-        # === 底部统计 ===
-        self.summary_label = QLabel("")
-        layout.addWidget(self.summary_label)
+    def _make_card(self, title: str, value: str) -> QFrame:
+        """创建统计数字卡片"""
+        card = QFrame()
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: #252526;
+                border-radius: 12px;
+                padding: 8px;
+            }
+        """)
+        v = QVBoxLayout(card)
+        v.setContentsMargins(12, 10, 12, 10)
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet("color: #aaa; font-size: 12px;")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value_lbl = QLabel(value)
+        value_lbl.setStyleSheet("color: #4a9eff; font-size: 28px; font-weight: bold;")
+        value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        v.addWidget(title_lbl)
+        v.addWidget(value_lbl)
+        # 保存 value_lbl 引用以便更新
+        card._value_label = value_lbl
+        return card
 
     def refresh_stats(self):
-        """刷新所有统计数据"""
-        chart_type = self.chart_combo.currentText()
+        """刷新所有统计数据（使用本地时间）"""
+        self._refresh_cards()
+        self._refresh_trend()
+        self._refresh_hourly()
+        self._refresh_top10()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.refresh_label.setText(f"上次刷新：{now_str}")
 
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
+    def _refresh_cards(self):
+        """更新三张核心卡片"""
+        stats = self.db.get_stats()
+        image_count = stats.get("count", 0)
+        tags = self.db.get_all_tags()
+        tag_count = len(tags)
+
+        # 使用次数（来自 usage_history）
+        try:
+            usage_rows = self.db.get_usage_history()
+            usage_count = len(usage_rows)
+        except Exception:
+            usage_count = 0
+
+        self.card_images._value_label.setText(str(image_count))
+        self.card_tags._value_label.setText(str(tag_count))
+        self.card_usage._value_label.setText(str(usage_count))
+
+    def _refresh_trend(self):
+        """最近7天使用趋势折线图（本地时间）"""
+        self.trend_figure.clear()
+        ax = self.trend_figure.add_subplot(111)
         ax.set_facecolor('#1e1e1e')
-        ax.tick_params(colors='white')
+        ax.tick_params(colors='white', labelsize=9)
         ax.xaxis.label.set_color('white')
         ax.yaxis.label.set_color('white')
-        ax.title.set_color('white')
 
-        if chart_type == "格式分布":
-            self._draw_format_chart(ax)
-        elif chart_type == "大小分布":
-            self._draw_size_chart(ax)
-        elif chart_type == "标签统计":
-            self._draw_tag_chart(ax)
-        elif chart_type == "导入趋势":
-            self._draw_trend_chart(ax)
+        # 生成最近7天的日期列表
+        today = datetime.now().date()
+        dates = [(today - timedelta(days=i)).strftime("%m-%d") for i in range(6, -1, -1)]
+        counts = defaultdict(int)
 
-        self.canvas.draw()
+        try:
+            rows = self.db.get_usage_history()
+            for row in rows:
+                # row: (id, image_id, used_at)
+                used_at_str = str(row[2])[:10]  # YYYY-MM-DD
+                try:
+                    d = datetime.strptime(used_at_str, "%Y-%m-%d").date()
+                    day_label = d.strftime("%m-%d")
+                    if day_label in dates:
+                        counts[day_label] += 1
+                except ValueError:
+                    pass
+        except Exception:
+            pass
 
-    def _draw_format_chart(self, ax):
-        """图片格式分布饼图"""
-        rows = self.db.get_all_images()
-        if not rows:
-            ax.text(0.5, 0.5, "暂无数据", ha='center', va='center', 
-                   transform=ax.transAxes, color='white', fontsize=14)
-            self.table.setRowCount(0)
-            self.summary_label.setText("暂无图片数据")
+        values = [counts.get(d, 0) for d in dates]
+        ax.plot(dates, values, marker='o', color='#4a9eff', linewidth=2, markersize=5)
+        ax.fill_between(dates, values, alpha=0.2, color='#4a9eff')
+        ax.set_title("最近 7 天使用趋势", color='white', fontsize=11)
+        for spine in ax.spines.values():
+            spine.set_color('#3e3e42')
+        self.trend_figure.tight_layout()
+        self.trend_canvas.draw()
+
+    def _refresh_hourly(self):
+        """24小时时段分布柱状图（本地时间）"""
+        self.hour_figure.clear()
+        ax = self.hour_figure.add_subplot(111)
+        ax.set_facecolor('#1e1e1e')
+        ax.tick_params(colors='white', labelsize=8)
+
+        hour_counts = [0] * 24
+        try:
+            rows = self.db.get_usage_history()
+            for row in rows:
+                used_at_str = str(row[2])
+                try:
+                    # 解析时间（格式：YYYY-MM-DDTHH:MM:SS.ffffff 或 YYYY-MM-DD HH:MM:SS）
+                    used_at_str = used_at_str.replace('T', ' ').split('.')[0]
+                    dt = datetime.strptime(used_at_str, "%Y-%m-%d %H:%M:%S")
+                    hour_counts[dt.hour] += 1
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+        hours = list(range(24))
+        colors = ['#4a9eff' if h in range(9, 22) else '#3a6ea8' for h in hours]
+        ax.bar(hours, hour_counts, color=colors, edgecolor='none')
+        ax.set_title("使用时段分布", color='white', fontsize=11)
+        ax.set_xticks(range(0, 24, 3))
+        ax.set_xticklabels([f"{h}时" for h in range(0, 24, 3)], color='white', fontsize=8)
+        for spine in ax.spines.values():
+            spine.set_color('#3e3e42')
+        self.hour_figure.tight_layout()
+        self.hour_canvas.draw()
+
+    def _refresh_top10(self):
+        """最常用 Top10 表情（带缩略图）"""
+        self.top10_list.clear()
+        try:
+            rows = self.db.get_usage_history()
+        except Exception:
             return
 
-        # 统计格式
-        format_counts = {}
-        total_size = 0
-        for row in rows:
-            fmt = row[3].upper()  # file_type
-            size = row[4]         # file_size
-            format_counts[fmt] = format_counts.get(fmt, 0) + 1
-            total_size += size
-
-        labels = list(format_counts.keys())
-        sizes = list(format_counts.values())
-        colors = plt.cm.Set3(range(len(labels)))
-
-        ax.pie(sizes, labels=labels, autopct='%1.1f%%', 
-               colors=colors, textprops={'color': 'white'})
-        ax.set_title("图片格式分布", color='white', fontsize=14)
-
-        # 更新表格
-        self.table.setRowCount(len(labels))
-        for i, (fmt, count) in enumerate(sorted(format_counts.items(), 
-                                                 key=lambda x: -x[1])):
-            self.table.setItem(i, 0, QTableWidgetItem(fmt))
-            self.table.setItem(i, 1, QTableWidgetItem(str(count)))
-            pct = count / len(rows) * 100
-            self.table.setItem(i, 2, QTableWidgetItem(f"{pct:.1f}%"))
-
-        size_mb = total_size / (1024 * 1024)
-        self.summary_label.setText(
-            f"总计 {len(rows)} 张图片 | 总大小 {size_mb:.2f} MB | "
-            f"平均 {size_mb/len(rows):.2f} MB/张"
-        )
-
-    def _draw_size_chart(self, ax):
-        """文件大小分布柱状图"""
-        rows = self.db.get_all_images()
         if not rows:
-            ax.text(0.5, 0.5, "暂无数据", ha='center', va='center',
-                   transform=ax.transAxes, color='white', fontsize=14)
-            self.table.setRowCount(0)
+            self.top10_list.addItem("暂无使用记录")
             return
 
-        # 分桶统计（MB）
-        buckets = {"< 0.1MB": 0, "0.1-0.5MB": 0, "0.5-1MB": 0, 
-                   "1-2MB": 0, "2-5MB": 0, "> 5MB": 0}
+        # 统计每张图片的使用次数
+        use_counts: dict = defaultdict(int)
         for row in rows:
-            size_mb = row[4] / (1024 * 1024)
-            if size_mb < 0.1:
-                buckets["< 0.1MB"] += 1
-            elif size_mb < 0.5:
-                buckets["0.1-0.5MB"] += 1
-            elif size_mb < 1:
-                buckets["0.5-1MB"] += 1
-            elif size_mb < 2:
-                buckets["1-2MB"] += 1
-            elif size_mb < 5:
-                buckets["2-5MB"] += 1
+            image_id = row[1]
+            use_counts[image_id] += 1
+
+        # 取 top10
+        top10 = sorted(use_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        # 延迟导入 ThumbnailService
+        if self.thumb_service is None:
+            from services.thumbnail_service import ThumbnailService
+            self.thumb_service = ThumbnailService()
+
+        for rank, (image_id, count) in enumerate(top10, 1):
+            img_row = self.db.get_image_by_id(image_id)
+            if not img_row:
+                continue
+            name = img_row[1]
+            file_path = img_row[2]
+
+            item = QListWidgetItem(f"#{rank}  {name}  （使用 {count} 次）")
+            item.setData(Qt.ItemDataRole.UserRole, image_id)
+
+            # 加载缩略图
+            thumb_path = self.thumb_service.get_thumbnail(file_path)
+            if thumb_path:
+                pixmap = QPixmap(thumb_path)
             else:
-                buckets["> 5MB"] += 1
+                pixmap = QPixmap(file_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(40, 40,
+                                       Qt.AspectRatioMode.KeepAspectRatio,
+                                       Qt.TransformationMode.SmoothTransformation)
+                item.setIcon(QIcon(scaled))
 
-        labels = list(buckets.keys())
-        values = list(buckets.values())
-        colors = ['#0d7377' if v > 0 else '#555' for v in values]
-
-        bars = ax.bar(labels, values, color=colors, edgecolor='white')
-        ax.set_title("文件大小分布", color='white', fontsize=14)
-        ax.set_ylabel("图片数量", color='white')
-
-        # 在柱子上显示数值
-        for bar, val in zip(bars, values):
-            if val > 0:
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
-                       str(val), ha='center', va='bottom', color='white')
-
-        # 更新表格
-        self.table.setRowCount(len(labels))
-        total = sum(values)
-        for i, (label, count) in enumerate(buckets.items()):
-            self.table.setItem(i, 0, QTableWidgetItem(label))
-            self.table.setItem(i, 1, QTableWidgetItem(str(count)))
-            pct = count / total * 100 if total > 0 else 0
-            self.table.setItem(i, 2, QTableWidgetItem(f"{pct:.1f}%"))
-
-        self.summary_label.setText(f"总计 {total} 张图片")
-
-    def _draw_tag_chart(self, ax):
-        """标签使用频率横向柱状图"""
-        # 获取所有标签及使用次数
-        tags = self.db.get_all_tags()
-        if not tags:
-            ax.text(0.5, 0.5, "暂无标签", ha='center', va='center',
-                   transform=ax.transAxes, color='white', fontsize=14)
-            self.table.setRowCount(0)
-            return
-
-        # 统计每个标签关联的图片数
-        tag_counts = []
-        for tag_id, name, color in tags:
-            # 通过数据库查询该标签关联的图片数
-            count = self._count_images_by_tag(tag_id)
-            tag_counts.append((name, count, color))
-
-        tag_counts.sort(key=lambda x: x[1], reverse=True)
-        names = [t[0] for t in tag_counts]
-        counts = [t[1] for t in tag_counts]
-        colors = [t[2] for t in tag_counts]
-
-        y_pos = range(len(names))
-        ax.barh(y_pos, counts, color=colors, edgecolor='white')
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(names, color='white')
-        ax.invert_yaxis()
-        ax.set_title("标签使用频率", color='white', fontsize=14)
-        ax.set_xlabel("关联图片数", color='white')
-
-        # 更新表格
-        self.table.setRowCount(len(names))
-        total = sum(counts)
-        for i, (name, count, _) in enumerate(tag_counts):
-            self.table.setItem(i, 0, QTableWidgetItem(name))
-            self.table.setItem(i, 1, QTableWidgetItem(str(count)))
-            pct = count / total * 100 if total > 0 else 0
-            self.table.setItem(i, 2, QTableWidgetItem(f"{pct:.1f}%"))
-
-        self.summary_label.setText(f"共 {len(names)} 个标签 | 总计使用 {total} 次")
-
-    def _draw_trend_chart(self, ax):
-        """导入趋势折线图（按创建时间）"""
-        rows = self.db.get_all_images()
-        if not rows:
-            ax.text(0.5, 0.5, "暂无数据", ha='center', va='center',
-                   transform=ax.transAxes, color='white', fontsize=14)
-            self.table.setRowCount(0)
-            return
-
-        # 按日期分组（使用 created_at）
-        from collections import defaultdict
-        from datetime import datetime
-
-        daily_counts = defaultdict(int)
-        for row in rows:
-            # row[8] 是 created_at，格式如 "2026-05-15 13:42:00"
-            try:
-                if len(row) > 8 and row[8]:
-                    date_str = str(row[8])[:10]  # 取 YYYY-MM-DD
-                    daily_counts[date_str] += 1
-                else:
-                    daily_counts["未知日期"] += 1
-            except Exception as e:
-                print(f"[StatsPanel] 日期解析错误: {e}, row={row}")
-                daily_counts["未知日期"] += 1
-
-        dates = sorted(daily_counts.keys())
-        counts = [daily_counts[d] for d in dates]
-
-        ax.plot(dates, counts, marker='o', color='#0d7377', 
-                linewidth=2, markersize=6)
-        ax.fill_between(dates, counts, alpha=0.3, color='#0d7377')
-        ax.set_title("每日导入趋势", color='white', fontsize=14)
-        ax.set_ylabel("导入数量", color='white')
-        ax.tick_params(axis='x', rotation=45)
-
-        # 更新表格
-        self.table.setRowCount(len(dates))
-        total = sum(counts)
-        for i, date in enumerate(dates):
-            self.table.setItem(i, 0, QTableWidgetItem(date))
-            self.table.setItem(i, 1, QTableWidgetItem(str(daily_counts[date])))
-            pct = daily_counts[date] / total * 100 if total > 0 else 0
-            self.table.setItem(i, 2, QTableWidgetItem(f"{pct:.1f}%"))
-
-        self.summary_label.setText(f"共 {len(dates)} 天有导入记录 | 总计 {total} 张")
-
-    def _count_images_by_tag(self, tag_id: int) -> int:
-        """统计标签关联的图片数"""
-        # 复用 search_images_by_tags 逻辑
-        rows = self.db.search_images_by_tags([tag_id])
-        return len(rows)
+            self.top10_list.addItem(item)

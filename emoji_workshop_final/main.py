@@ -55,8 +55,8 @@ class MainWindow(QMainWindow):
 
     def _restore_window_state(self):
         """从配置恢复窗口位置和大小"""
-        width = self.config.get("window.width", 1200)
-        height = self.config.get("window.height", 700)
+        width = self.config.get("window.width", 1000)
+        height = self.config.get("window.height", 650)
         pos_x = self.config.get("window.pos_x", 100)
         pos_y = self.config.get("window.pos_y", 100)
         maximized = self.config.get("window.maximized", False)
@@ -105,6 +105,13 @@ class MainWindow(QMainWindow):
         report_action.triggered.connect(self._open_report_dialog)
         view_menu.addAction(report_action)
 
+        view_menu.addSeparator()
+
+        toggle_panel_action = QAction("隐藏/显示右侧面板", self)
+        toggle_panel_action.setShortcut("F9")
+        toggle_panel_action.triggered.connect(self._toggle_right_panel)
+        view_menu.addAction(toggle_panel_action)
+
         # 设置菜单
         settings_action = QAction("⚙️ 设置", self)
         settings_action.setShortcut("Ctrl+,")
@@ -116,6 +123,10 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 主分割器（左右可拖拽调整）
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # 左侧主区域
         left_container = QWidget()
@@ -125,6 +136,7 @@ class MainWindow(QMainWindow):
         # 画廊视图
         self.gallery = GalleryView(self.db_service)
         self.gallery.image_selected.connect(self.on_image_selected)
+        self.gallery.images_selection_changed.connect(self.on_images_selection_changed)
         left_layout.addWidget(self.gallery)
 
         # 统计面板（默认隐藏）
@@ -132,9 +144,13 @@ class MainWindow(QMainWindow):
         self.stats_panel.setVisible(False)
         left_layout.addWidget(self.stats_panel)
 
-        main_layout.addWidget(left_container, 3)
+        self.main_splitter.addWidget(left_container)
 
         # 右侧：标签面板 + 智能推荐面板（垂直 QSplitter）
+        self.right_container = QWidget()
+        right_layout = QVBoxLayout(self.right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
         right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.tag_panel = TagPanel(self.db_service)
@@ -146,7 +162,12 @@ class MainWindow(QMainWindow):
         right_splitter.addWidget(self.recommend_panel)
 
         right_splitter.setSizes([300, 300])
-        main_layout.addWidget(right_splitter, 1)
+        right_layout.addWidget(right_splitter)
+
+        self.main_splitter.addWidget(self.right_container)
+        self.main_splitter.setSizes([700, 300])
+
+        main_layout.addWidget(self.main_splitter)
 
         # 应用主题
         self._apply_theme()
@@ -157,88 +178,201 @@ class MainWindow(QMainWindow):
 
         if theme == "dark":
             self.setStyleSheet("""
+                * {
+                    font-family: "Microsoft YaHei UI", "PingFang SC", "Helvetica", sans-serif;
+                    font-size: 13px;
+                }
                 QMainWindow { background-color: #1e1e1e; }
                 QWidget { background-color: #1e1e1e; color: #e0e0e0; }
                 QPushButton {
-                    background-color: #0d7377;
+                    background-color: #4a9eff;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
-                    border-radius: 4px;
+                    padding: 8px 18px;
+                    border-radius: 8px;
                 }
-                QPushButton:hover { background-color: #14919b; }
-                QPushButton:disabled { background-color: #555; }
+                QPushButton:hover { background-color: #6ab3ff; }
+                QPushButton:pressed { background-color: #3480d8; }
+                QPushButton:disabled { background-color: #555; color: #888; }
                 QListWidget {
                     background-color: #252526;
                     border: 1px solid #3e3e42;
-                    border-radius: 4px;
+                    border-radius: 8px;
+                }
+                QListWidget::item:hover {
+                    background-color: #2e2e3a;
+                }
+                QListWidget::item:selected {
+                    background-color: #4a9eff;
+                    color: white;
                 }
                 QLabel { color: #e0e0e0; }
-                QLineEdit {
+                QLineEdit, QComboBox, QTextEdit {
                     background-color: #252526;
                     color: #e0e0e0;
                     border: 1px solid #3e3e42;
                     padding: 6px;
-                    border-radius: 4px;
+                    border-radius: 8px;
+                }
+                QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
+                    border: 2px solid #4a9eff;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    padding-right: 6px;
                 }
                 QProgressBar {
                     border: 1px solid #3e3e42;
-                    border-radius: 4px;
+                    border-radius: 8px;
                     text-align: center;
                 }
                 QProgressBar::chunk {
-                    background-color: #0d7377;
+                    background-color: #4a9eff;
+                    border-radius: 8px;
                 }
                 QMenuBar {
                     background-color: #2d2d2d;
                     color: #e0e0e0;
+                    border-bottom: 1px solid #3e3e42;
                 }
                 QMenuBar::item:selected {
-                    background-color: #0d7377;
+                    background-color: #4a9eff;
+                    border-radius: 4px;
                 }
                 QMenu {
                     background-color: #2d2d2d;
                     color: #e0e0e0;
                     border: 1px solid #3e3e42;
+                    border-radius: 8px;
                 }
                 QMenu::item:selected {
-                    background-color: #0d7377;
+                    background-color: #4a9eff;
+                    border-radius: 4px;
                 }
+                QScrollBar:vertical {
+                    background: #252526;
+                    width: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:vertical {
+                    background: #555;
+                    border-radius: 4px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover { background: #4a9eff; }
+                QScrollBar:horizontal {
+                    background: #252526;
+                    height: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:horizontal {
+                    background: #555;
+                    border-radius: 4px;
+                    min-width: 20px;
+                }
+                QScrollBar::handle:horizontal:hover { background: #4a9eff; }
+                QGroupBox {
+                    border: 1px solid #3e3e42;
+                    border-radius: 8px;
+                    margin-top: 8px;
+                    padding-top: 8px;
+                }
+                QGroupBox::title {
+                    color: #4a9eff;
+                    subcontrol-origin: margin;
+                    left: 10px;
+                }
+                QTabWidget::pane {
+                    border: 1px solid #3e3e42;
+                    border-radius: 8px;
+                }
+                QTabBar::tab {
+                    background: #252526;
+                    color: #aaa;
+                    padding: 6px 14px;
+                    border-radius: 6px 6px 0 0;
+                }
+                QTabBar::tab:selected {
+                    background: #4a9eff;
+                    color: white;
+                }
+                QSplitter::handle { background: #3e3e42; }
             """)
         else:
             self.setStyleSheet("""
+                * {
+                    font-family: "Microsoft YaHei UI", "PingFang SC", "Helvetica", sans-serif;
+                    font-size: 13px;
+                }
                 QMainWindow { background-color: #f5f5f5; }
                 QWidget { background-color: #f5f5f5; color: #333; }
                 QPushButton {
-                    background-color: #2196F3;
+                    background-color: #5b8def;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
-                    border-radius: 4px;
+                    padding: 8px 18px;
+                    border-radius: 8px;
                 }
-                QPushButton:hover { background-color: #1976D2; }
-                QPushButton:disabled { background-color: #ccc; }
+                QPushButton:hover { background-color: #3a6ed4; }
+                QPushButton:pressed { background-color: #2a5ab8; }
+                QPushButton:disabled { background-color: #ccc; color: #888; }
                 QListWidget {
                     background-color: white;
                     border: 1px solid #ddd;
-                    border-radius: 4px;
+                    border-radius: 8px;
+                }
+                QListWidget::item:hover { background-color: #eef2ff; }
+                QListWidget::item:selected {
+                    background-color: #5b8def;
+                    color: white;
                 }
                 QLabel { color: #333; }
-                QLineEdit {
+                QLineEdit, QComboBox, QTextEdit {
                     background-color: white;
                     color: #333;
                     border: 1px solid #ddd;
                     padding: 6px;
-                    border-radius: 4px;
+                    border-radius: 8px;
+                }
+                QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
+                    border: 2px solid #5b8def;
+                }
+                QComboBox::drop-down {
+                    border: none;
+                    padding-right: 6px;
                 }
                 QProgressBar {
                     border: 1px solid #ddd;
-                    border-radius: 4px;
+                    border-radius: 8px;
                     text-align: center;
                 }
                 QProgressBar::chunk {
-                    background-color: #2196F3;
+                    background-color: #5b8def;
+                    border-radius: 8px;
                 }
+                QScrollBar:vertical {
+                    background: #f0f0f0;
+                    width: 8px;
+                    border-radius: 4px;
+                }
+                QScrollBar::handle:vertical {
+                    background: #bbb;
+                    border-radius: 4px;
+                    min-height: 20px;
+                }
+                QScrollBar::handle:vertical:hover { background: #5b8def; }
+                QGroupBox {
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    margin-top: 8px;
+                    padding-top: 8px;
+                }
+                QGroupBox::title {
+                    color: #5b8def;
+                    subcontrol-origin: margin;
+                    left: 10px;
+                }
+                QSplitter::handle { background: #ddd; }
             """)
 
     def _open_report_dialog(self):
@@ -269,6 +403,11 @@ class MainWindow(QMainWindow):
         dialog.exec()
         self.gallery.load_from_database()
 
+    def _toggle_right_panel(self):
+        """切换右侧面板显示/隐藏（F9）"""
+        visible = self.right_container.isVisible()
+        self.right_container.setVisible(not visible)
+
     def _toggle_stats_panel(self):
         """切换统计面板显示/隐藏"""
         is_visible = self.stats_panel.isVisible()
@@ -279,8 +418,12 @@ class MainWindow(QMainWindow):
             self.stats_panel.refresh_stats()
 
     def on_image_selected(self, image_id: int):
-        """图片选中时更新标签面板"""
+        """图片选中时更新标签面板（向后兼容单图）"""
         self.tag_panel.set_current_image(image_id)
+
+    def on_images_selection_changed(self, image_ids: list):
+        """多图选中时批量更新标签面板"""
+        self.tag_panel.set_current_images(image_ids)
 
     def on_tag_selected(self, tag_ids: list):
         """标签选择变化时筛选画廊"""

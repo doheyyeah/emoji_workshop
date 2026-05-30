@@ -75,9 +75,9 @@ class GalleryView(QWidget):
         self.search_btn.clicked.connect(self.do_search)
         self.reset_btn = QPushButton("重置")
         self.reset_btn.clicked.connect(self.load_from_database)
-        self.clear_history_btn = QPushButton("🗑")
-        self.clear_history_btn.setFixedWidth(32)
-        self.clear_history_btn.setToolTip("清空搜索历史")
+        self.clear_history_btn = QPushButton("清历史")
+        self.clear_history_btn.setFixedWidth(56)
+        self.clear_history_btn.setToolTip("清空搜索历史（只清历史，不清图片）")
         self.clear_history_btn.clicked.connect(self._clear_search_history)
         
         search_layout.addWidget(self.search_input)
@@ -355,10 +355,7 @@ class GalleryView(QWidget):
         
         if ClipboardService.copy_image(model.file_path):
             self.db.record_usage(image_id)
-            if ClipboardService.is_animated(model.file_path):
-                msg = '已复制动图到剪贴板，粘贴到微信/QQ 时请选"以图片形式发送"以保留动画'
-            else:
-                msg = "已复制图片到剪贴板，可粘贴到聊天框"
+            msg = "已复制 + 已记录使用"
             # 通知主窗口在状态栏显示
             main_win = self.window()
             if hasattr(main_win, 'statusBar'):
@@ -439,6 +436,40 @@ class GalleryView(QWidget):
             self._add_thumbnail(model)
         
         self.info_label.setText(f"标签筛选: {len(rows)} 张")
+        self.update_stats()
+
+    def filter_by_tag_names(self, tag_names: List[str], match_mode: str = "union"):
+        """按标签名筛选，支持并集/交集"""
+        if not tag_names:
+            self.load_from_database()
+            return
+
+        self.list_widget.clear()
+        self.current_images = []
+
+        if match_mode == "intersect":
+            rows = self.db.get_images_by_tags_intersect(tag_names)
+        else:
+            rows = self.db.get_images_by_tags_union(tag_names)
+
+        for row in rows:
+            model = ImageModel.from_db_row(
+                (
+                    row["id"],
+                    row["name"],
+                    row["file_path"],
+                    row["file_type"],
+                    row["file_size"],
+                    row["width"],
+                    row["height"],
+                    row.get("thumbnail_path"),
+                )
+            )
+            self.current_images.append(model)
+            self._add_thumbnail(model)
+
+        mode_cn = "交集" if match_mode == "intersect" else "并集"
+        self.info_label.setText(f"标签筛选（{mode_cn}）: {len(rows)} 张")
         self.update_stats()
     
     def clear_all(self):

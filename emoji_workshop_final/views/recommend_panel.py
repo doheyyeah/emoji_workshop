@@ -13,13 +13,12 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
-    QApplication,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QTextEdit,
+    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +27,7 @@ from controllers.recommend_controller import RecommendController
 from services.database_service import DatabaseService
 from services.thumbnail_service import ThumbnailService
 from services.clipboard_service import ClipboardService
+from utils.config_manager import ConfigManager
 
 
 class RecommendPanel(QWidget):
@@ -39,6 +39,7 @@ class RecommendPanel(QWidget):
         super().__init__(parent)
         self.db = db_service
         self.controller = RecommendController(db_service)
+        self.config = ConfigManager()
         self.thumb_service = ThumbnailService()
         self._setup_ui()
 
@@ -63,15 +64,26 @@ class RecommendPanel(QWidget):
         layout.addWidget(self.context_input)
 
         # 推荐按钮
+        btn_row = QHBoxLayout()
         self.recommend_btn = QPushButton("🔍 推荐")
         self.recommend_btn.clicked.connect(self._do_recommend)
-        layout.addWidget(self.recommend_btn)
+        self.goto_settings_btn = QPushButton("前往设置")
+        self.goto_settings_btn.clicked.connect(self._goto_settings)
+        self.goto_settings_btn.setVisible(False)
+        btn_row.addWidget(self.recommend_btn)
+        btn_row.addWidget(self.goto_settings_btn)
+        layout.addLayout(btn_row)
 
-        # 关键词显示
-        self.keywords_label = QLabel("识别到的关键词：—")
-        self.keywords_label.setWordWrap(True)
-        self.keywords_label.setStyleSheet("color: #aaa; font-size: 11px;")
-        layout.addWidget(self.keywords_label)
+        self.llm_tags_label = QLabel("💡 LLM 推荐的标签：—")
+        self.llm_tags_label.setWordWrap(True)
+        self.llm_tags_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        layout.addWidget(self.llm_tags_label)
+
+        self.error_label = QLabel("⚠️ 请先在 设置 → AI 推荐 中配置 LLM API Key")
+        self.error_label.setWordWrap(True)
+        self.error_label.setStyleSheet("color: #ff6b6b; font-size: 11px;")
+        self.error_label.setVisible(not self.config.is_llm_enabled())
+        layout.addWidget(self.error_label)
 
         # 推荐结果列表
         self.result_list = QListWidget()
@@ -98,15 +110,25 @@ class RecommendPanel(QWidget):
         """执行推荐逻辑"""
         context = self.context_input.toPlainText().strip()
         if not context:
-            self.keywords_label.setText("识别到的关键词：（请输入上下文）")
+            self.error_label.setText("请输入聊天上下文后再推荐")
             return
 
-        keywords = self.controller.extract_keywords(context)
-        kw_text = "、".join(keywords) if keywords else "（未提取到有效关键词）"
-        self.keywords_label.setText(f"识别到的关键词：{kw_text}")
-
-        results = self.controller.recommend(context, top_k=6)
-        self._show_results(results)
+        try:
+            results = self.controller.recommend(context, top_k=6)
+            tags = self.controller.last_recommended_tags
+            tag_text = "、".join(tags) if tags else "—"
+            self.llm_tags_label.setText(f"💡 LLM 推荐的标签：{tag_text}")
+            self.error_label.setText("")
+            self.error_label.setVisible(False)
+            self.goto_settings_btn.setVisible(False)
+            self._show_results(results)
+        except Exception as exc:
+            self.result_list.clear()
+            self.hint_label.setText("推荐失败")
+            self.llm_tags_label.setText("💡 LLM 推荐的标签：—")
+            self.error_label.setText(str(exc))
+            self.error_label.setVisible(True)
+            self.goto_settings_btn.setVisible(True)
 
     def _show_results(self, models) -> None:
         """将推荐结果渲染到列表"""
@@ -153,10 +175,10 @@ class RecommendPanel(QWidget):
             return
 
         if ClipboardService.copy_image(file_path):
-            if ClipboardService.is_animated(file_path):
-                msg = '已复制动图到剪贴板，粘贴到微信/QQ 时请选"以图片形式发送"以保留动画'
-            else:
-                msg = "已复制图片到剪贴板，可粘贴到聊天框"
+            image_id = item.data(Qt.ItemDataRole.UserRole)
+            if image_id:
+                self.db.record_usage(image_id)
+            msg = "已复制 + 已记录使用"
             self.hint_label.setText(f"✅ {msg}")
             # 通知主窗口状态栏
             main_win = self.window()
@@ -167,3 +189,8 @@ class RecommendPanel(QWidget):
         # 3 秒后恢复提示文字
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(3000, lambda: self.hint_label.setText("双击结果可复制到剪贴板"))
+
+    def _goto_settings(self):
+        main_win = self.window()
+        if hasattr(main_win, "_open_settings"):
+            main_win._open_settings()

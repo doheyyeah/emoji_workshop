@@ -158,6 +158,11 @@ class DatabaseService:
                 conn.commit()
             except sqlite3.IntegrityError:
                 pass  # 已存在，忽略
+
+    def add_tag_to_image(self, image_id: int, tag_name: str, color: str = "#FF6B6B"):
+        """按标签名给图片打标签（不存在时自动创建标签）"""
+        tag_id = self.add_tag(tag_name, color)
+        self.add_image_tag(image_id, tag_id)
     
     def remove_image_tag(self, image_id: int, tag_id: int):
         """移除图片的标签"""
@@ -210,6 +215,48 @@ class DatabaseService:
                 FROM images WHERE name LIKE ? ORDER BY created_at DESC
             ''', (f'%{keyword}%',))
             return cursor.fetchall()
+
+    def get_images_by_tags_union(self, tag_names: list[str]) -> list[dict]:
+        """按标签名并集筛选图片（命中任一标签即可）"""
+        if not tag_names:
+            return [self._row_to_image_dict(row) for row in self.get_all_images()]
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(tag_names))
+            query = f"""
+                SELECT DISTINCT i.id, i.name, i.file_path, i.file_type, i.file_size,
+                                i.width, i.height, i.thumbnail_path
+                FROM images i
+                JOIN image_tags it ON i.id = it.image_id
+                JOIN tags t ON t.id = it.tag_id
+                WHERE t.name IN ({placeholders})
+                ORDER BY i.created_at DESC
+            """
+            cursor.execute(query, tag_names)
+            return [self._row_to_image_dict(row) for row in cursor.fetchall()]
+
+    def get_images_by_tags_intersect(self, tag_names: list[str]) -> list[dict]:
+        """按标签名交集筛选图片（需同时命中所有标签）"""
+        if not tag_names:
+            return [self._row_to_image_dict(row) for row in self.get_all_images()]
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            placeholders = ",".join("?" * len(tag_names))
+            query = f"""
+                SELECT i.id, i.name, i.file_path, i.file_type, i.file_size,
+                       i.width, i.height, i.thumbnail_path
+                FROM images i
+                JOIN image_tags it ON i.id = it.image_id
+                JOIN tags t ON t.id = it.tag_id
+                WHERE t.name IN ({placeholders})
+                GROUP BY i.id
+                HAVING COUNT(DISTINCT t.name) = ?
+                ORDER BY i.created_at DESC
+            """
+            cursor.execute(query, tag_names + [len(set(tag_names))])
+            return [self._row_to_image_dict(row) for row in cursor.fetchall()]
 
     # ===== 上下文推荐：关键词标签匹配 =====
 
@@ -301,3 +348,16 @@ class DatabaseService:
                     'SELECT id, image_id, used_at FROM usage_history ORDER BY used_at DESC'
                 )
             return cursor.fetchall()
+
+    @staticmethod
+    def _row_to_image_dict(row: tuple) -> dict:
+        return {
+            "id": row[0],
+            "name": row[1],
+            "file_path": row[2],
+            "file_type": row[3],
+            "file_size": row[4],
+            "width": row[5],
+            "height": row[6],
+            "thumbnail_path": row[7],
+        }

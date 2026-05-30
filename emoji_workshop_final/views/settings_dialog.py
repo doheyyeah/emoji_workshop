@@ -51,6 +51,10 @@ class SettingsDialog(QDialog):
         self.advanced_tab = self._create_advanced_tab()
         self.tabs.addTab(self.advanced_tab, "高级")
 
+        # === 标签页5：AI 推荐 ===
+        self.ai_tab = self._create_ai_tab()
+        self.tabs.addTab(self.ai_tab, "🤖 AI 推荐")
+
         # 底部按钮（全部中文）
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save |
@@ -101,6 +105,9 @@ class SettingsDialog(QDialog):
 
         self.confirm_delete_check = QCheckBox("删除前显示确认对话框")
         behavior_layout.addRow(self.confirm_delete_check)
+
+        self.clipboard_monitor_check = QCheckBox("启用剪贴板监听（检测到图片自动询问是否入库）")
+        behavior_layout.addRow(self.clipboard_monitor_check)
 
         behavior_group.setLayout(behavior_layout)
         layout.addWidget(behavior_group)
@@ -174,8 +181,11 @@ class SettingsDialog(QDialog):
         network_layout.addRow("最大并发下载:", self.concurrent_spin)
 
         self.proxy_edit = QLineEdit()
-        self.proxy_edit.setPlaceholderText("http://127.0.0.1:7890（留空表示不使用）")
+        self.proxy_edit.setPlaceholderText("http://127.0.0.1:7890")
         network_layout.addRow("代理地址:", self.proxy_edit)
+        self.proxy_hint = QLabel("留空表示不使用代理")
+        self.proxy_hint.setStyleSheet("color: #aaa; font-size: 11px;")
+        network_layout.addRow("", self.proxy_hint)
 
         network_group.setLayout(network_layout)
         layout.addWidget(network_group)
@@ -194,6 +204,43 @@ class SettingsDialog(QDialog):
         test_group.setLayout(test_layout)
         layout.addWidget(test_group)
 
+        layout.addStretch()
+        return tab
+
+    def _create_ai_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+
+        group = QGroupBox("LLM 智能推荐")
+        form = QFormLayout()
+
+        self.llm_enabled_check = QCheckBox("启用 LLM 智能推荐")
+        form.addRow(self.llm_enabled_check)
+
+        self.llm_provider_combo = QComboBox()
+        self.llm_provider_combo.addItems(["Kimi (Moonshot)", "DeepSeek", "智谱 GLM", "自定义"])
+        self.llm_provider_combo.currentIndexChanged.connect(self._on_llm_provider_changed)
+        form.addRow("提供商预设:", self.llm_provider_combo)
+
+        self.llm_base_url_edit = QLineEdit()
+        form.addRow("Base URL:", self.llm_base_url_edit)
+
+        self.llm_api_key_edit = QLineEdit()
+        self.llm_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow("API Key:", self.llm_api_key_edit)
+
+        self.llm_model_edit = QLineEdit()
+        form.addRow("Model:", self.llm_model_edit)
+
+        self.llm_test_btn = QPushButton("测试连接")
+        self.llm_test_btn.clicked.connect(self._test_llm_connection)
+        form.addRow("", self.llm_test_btn)
+
+        self.llm_test_result = QLabel("未测试")
+        form.addRow("状态:", self.llm_test_result)
+
+        group.setLayout(form)
+        layout.addWidget(group)
         layout.addStretch()
         return tab
 
@@ -245,6 +292,9 @@ class SettingsDialog(QDialog):
         self.grid_spacing_spin.setValue(self.config.get("ui.grid_spacing", 10))
         self.auto_save_check.setChecked(self.config.get("behavior.auto_save", True))
         self.confirm_delete_check.setChecked(self.config.get("behavior.confirm_delete", True))
+        self.clipboard_monitor_check.setChecked(
+            self.config.get("behavior.clipboard_monitor_enabled", False)
+        )
 
         # 最近文件夹（使用 get_recent_folders 方法确保兼容）
         self.recent_list.clear()
@@ -261,6 +311,13 @@ class SettingsDialog(QDialog):
         proxy = self.config.get("network.proxy", "")
         self.proxy_edit.setText(proxy if proxy else "")
 
+        llm = self.config.get_llm_config()
+        self.llm_enabled_check.setChecked(llm["enabled"])
+        self.llm_base_url_edit.setText(llm["base_url"])
+        self.llm_api_key_edit.setText(llm["api_key"])
+        self.llm_model_edit.setText(llm["model"])
+        self._sync_llm_provider_combo(llm["provider_name"])
+
         # 统计
         self.stat_imported_label.setText(str(self.config.get("stats.total_imported", 0)))
         self.stat_tags_label.setText(str(self.config.get("stats.total_tags_created", 0)))
@@ -276,6 +333,7 @@ class SettingsDialog(QDialog):
         self.config.set("ui.grid_spacing", self.grid_spacing_spin.value())
         self.config.set("behavior.auto_save", self.auto_save_check.isChecked())
         self.config.set("behavior.confirm_delete", self.confirm_delete_check.isChecked())
+        self.config.set("behavior.clipboard_monitor_enabled", self.clipboard_monitor_check.isChecked())
 
         # 路径
         self.config.set("paths.last_import_folder", self.import_path_edit.text())
@@ -286,6 +344,20 @@ class SettingsDialog(QDialog):
         self.config.set("network.max_concurrent_downloads", self.concurrent_spin.value())
         proxy = self.proxy_edit.text().strip()
         self.config.set("network.proxy", proxy if proxy else None)
+
+        provider_name_map = {
+            "Kimi (Moonshot)": "Kimi",
+            "DeepSeek": "DeepSeek",
+            "智谱 GLM": "智谱 GLM",
+            "自定义": "自定义",
+        }
+        self.config.set_llm_config(
+            provider_name=provider_name_map.get(self.llm_provider_combo.currentText(), "自定义"),
+            base_url=self.llm_base_url_edit.text().strip(),
+            api_key=self.llm_api_key_edit.text().strip(),
+            model=self.llm_model_edit.text().strip(),
+            enabled=self.llm_enabled_check.isChecked(),
+        )
 
         # 强制保存
         self.config.save()
@@ -365,13 +437,15 @@ class SettingsDialog(QDialog):
                     for name, url, timeout in urls:
                         try:
                             r = requests.get(url, timeout=timeout, proxies=proxies)
-                            results.append(f"✅ {name}: 正常 ({r.status_code})")
+                            results.append((f"✅ {name}:正常", True, ""))
                         except Exception as e:
-                            results.append(f"❌ {name}: {str(e)[:50]}")
+                            results.append((f"❌ {name}:不正常", False, str(e)))
 
-                    self.result.emit("\n".join(results), True)
+                    lines = [r[0] for r in results]
+                    tooltip = "\n".join([f"{r[0]} -> {r[2]}" for r in results if r[2]])
+                    self.result.emit("\n".join(lines) + "\n@@@" + tooltip, all(r[1] for r in results))
                 except Exception as e:
-                    self.result.emit(f"测试失败: {str(e)}", False)
+                    self.result.emit(f"测试失败@@@{str(e)}", False)
 
         self.test_result_label.setText("正在测试...")
         self.thread = TestThread()
@@ -379,8 +453,48 @@ class SettingsDialog(QDialog):
         self.thread.start()
 
     def _on_test_result(self, msg, success):
-        self.test_result_label.setText(msg)
+        display_msg, _, tooltip = msg.partition("@@@")
+        self.test_result_label.setText(display_msg)
+        self.test_result_label.setToolTip(tooltip)
         if success:
-            self.test_result_label.setStyleSheet("color: #4CAF50;")
+            self.test_result_label.setStyleSheet("color: #51cf66;")
         else:
-            self.test_result_label.setStyleSheet("color: #f44336;")
+            self.test_result_label.setStyleSheet("color: #ff6b6b;")
+
+    def _sync_llm_provider_combo(self, provider_name: str):
+        mapping = {
+            "Kimi": "Kimi (Moonshot)",
+            "DeepSeek": "DeepSeek",
+            "智谱 GLM": "智谱 GLM",
+            "自定义": "自定义",
+        }
+        self.llm_provider_combo.setCurrentText(mapping.get(provider_name, "自定义"))
+
+    def _on_llm_provider_changed(self, *_):
+        presets = {
+            "Kimi (Moonshot)": ("https://api.moonshot.cn/v1", "moonshot-v1-8k"),
+            "DeepSeek": ("https://api.deepseek.com/v1", "deepseek-chat"),
+            "智谱 GLM": ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
+        }
+        text = self.llm_provider_combo.currentText()
+        if text in presets:
+            base_url, model = presets[text]
+            self.llm_base_url_edit.setText(base_url)
+            self.llm_model_edit.setText(model)
+
+    def _test_llm_connection(self):
+        from services.llm_service import LLMService
+
+        try:
+            llm = LLMService(
+                base_url=self.llm_base_url_edit.text().strip(),
+                api_key=self.llm_api_key_edit.text().strip(),
+                model=self.llm_model_edit.text().strip(),
+            )
+            _ = llm.chat("hi", timeout=30)
+            self.llm_test_result.setText("✅ 连接成功")
+            self.llm_test_result.setStyleSheet("color: #51cf66;")
+        except Exception as exc:
+            self.llm_test_result.setText("❌ 连接失败")
+            self.llm_test_result.setStyleSheet("color: #ff6b6b;")
+            self.llm_test_result.setToolTip(str(exc))

@@ -1,32 +1,66 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QListWidget, QListWidgetItem, QColorDialog,
-    QMessageBox, QMenu
+    QMessageBox, QMenu, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 
 
 class TagPanel(QWidget):
-    """标签管理面板：添加/删除标签，支持多图批量打标签"""
-    
-    tag_selected = pyqtSignal(list)  # 发射选中的标签ID列表
-    
+    """标签管理面板：筛选模式 + 打标签模式"""
+
+    # 兼容保留：对外发射已选标签ID（筛选模式时）
+    tag_selected = pyqtSignal(list)
+    # 新信号：发射标签名 + 并/交模式
+    filter_tags_changed = pyqtSignal(list, str)
+    # 标签更新后通知外部刷新
+    tags_updated = pyqtSignal()
+
     def __init__(self, db_service, parent=None):
         super().__init__(parent)
         self.db = db_service
-        self.current_image_ids: list = []   # 支持多选，存 id 列表
+        self.current_image_ids: list = []
+        self.mode = "filter"      # filter | tagging
+        self.match_mode = "union"  # union | intersect
         self.setup_ui()
         self.load_tags()
-    
+        self._update_mode_ui()
+
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        
+
+        # === 模式切换 ===
+        mode_layout = QHBoxLayout()
+        self.filter_mode_radio = QRadioButton("🔍 筛选模式")
+        self.tag_mode_radio = QRadioButton("✏️ 打标签模式")
+        self.filter_mode_radio.setChecked(True)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.addButton(self.filter_mode_radio)
+        self.mode_group.addButton(self.tag_mode_radio)
+        self.filter_mode_radio.toggled.connect(self._on_mode_changed)
+
+        mode_layout.addWidget(self.filter_mode_radio)
+        mode_layout.addWidget(self.tag_mode_radio)
+        mode_layout.addStretch()
+
+        self.union_radio = QRadioButton("并集")
+        self.intersect_radio = QRadioButton("交集")
+        self.union_radio.setChecked(True)
+        self.union_radio.toggled.connect(self._on_match_mode_changed)
+        mode_layout.addWidget(self.union_radio)
+        mode_layout.addWidget(self.intersect_radio)
+        layout.addLayout(mode_layout)
+
+        self.mode_hint_label = QLabel("已选中 0 个标签作筛选条件")
+        self.mode_hint_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        layout.addWidget(self.mode_hint_label)
+
         # === 选中状态标签 ===
         self.selection_label = QLabel("未选中图片")
         self.selection_label.setStyleSheet("color: #aaa; font-size: 11px;")
         layout.addWidget(self.selection_label)
-        
+
         # === 添加新标签 ===
         add_layout = QHBoxLayout()
         self.tag_input = QLineEdit()
@@ -36,60 +70,52 @@ class TagPanel(QWidget):
         self.color_btn.clicked.connect(self.pick_color)
         self.add_btn = QPushButton("➕ 添加")
         self.add_btn.clicked.connect(self.add_tag)
-        
         add_layout.addWidget(self.tag_input)
         add_layout.addWidget(self.color_btn)
         add_layout.addWidget(self.add_btn)
         layout.addLayout(add_layout)
-        
+
         # === 标签列表 ===
         self.tag_list = QListWidget()
         self.tag_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.tag_list.itemSelectionChanged.connect(self.on_selection_changed)
-        # 右键菜单
         self.tag_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tag_list.customContextMenuRequested.connect(self.show_context_menu)
-        
-        layout.addWidget(QLabel("所有标签（多选筛选）："))
+        layout.addWidget(QLabel("所有标签："))
         layout.addWidget(self.tag_list)
-        
-        # === 当前图片的标签 ===
+
+        # === 当前图片标签 ===
         self.image_tags_label = QLabel("选中图片的标签：")
         layout.addWidget(self.image_tags_label)
-        
         self.image_tag_list = QListWidget()
         self.image_tag_list.setMaximumHeight(100)
         layout.addWidget(self.image_tag_list)
-        
+
         # === 给图片打标签 ===
-        self.assign_btn = QPushButton("🏷️ 给选中图片打标签")
+        self.assign_btn = QPushButton("🏷️ 添加到选中图片")
         self.assign_btn.setEnabled(False)
         self.assign_btn.clicked.connect(self.assign_tags_to_image)
         layout.addWidget(self.assign_btn)
-        
+
         self.selected_color = "#FF6B6B"
         self.color_btn.setStyleSheet(f"background-color: {self.selected_color};")
-    
+
     def pick_color(self):
-        """选择标签颜色"""
         color = QColorDialog.getColor()
         if color.isValid():
             self.selected_color = color.name()
             self.color_btn.setStyleSheet(f"background-color: {self.selected_color};")
-    
+
     def add_tag(self):
-        """添加新标签"""
         name = self.tag_input.text().strip()
         if not name:
             QMessageBox.warning(self, "提示", "标签名不能为空")
             return
-        
-        tag_id = self.db.add_tag(name, self.selected_color)
+        self.db.add_tag(name, self.selected_color)
         self.tag_input.clear()
         self.load_tags()
-    
+
     def load_tags(self):
-        """加载所有标签"""
         self.tag_list.clear()
         rows = self.db.get_all_tags()
         for row in rows:
@@ -98,19 +124,60 @@ class TagPanel(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, tag_id)
             item.setBackground(QColor(color))
             self.tag_list.addItem(item)
-    
+
+    def _selected_tag_items(self):
+        return self.tag_list.selectedItems()
+
+    def _selected_tag_ids(self):
+        return [item.data(Qt.ItemDataRole.UserRole) for item in self._selected_tag_items()]
+
+    def _selected_tag_names(self):
+        return [item.text() for item in self._selected_tag_items()]
+
+    def _on_mode_changed(self):
+        self.mode = "filter" if self.filter_mode_radio.isChecked() else "tagging"
+        self._update_mode_ui()
+        self.on_selection_changed()
+
+    def _on_match_mode_changed(self):
+        self.match_mode = "union" if self.union_radio.isChecked() else "intersect"
+        if self.mode == "filter":
+            self.on_selection_changed()
+
+    def _update_mode_ui(self):
+        is_filter = self.mode == "filter"
+        self.union_radio.setEnabled(is_filter)
+        self.intersect_radio.setEnabled(is_filter)
+        self.assign_btn.setVisible(not is_filter)
+        self._update_hint_text()
+        self.assign_btn.setEnabled(
+            (not is_filter)
+            and bool(self.current_image_ids)
+            and len(self._selected_tag_items()) > 0
+        )
+
+    def _update_hint_text(self):
+        if self.mode == "filter":
+            self.mode_hint_label.setText(
+                f"已选中 {len(self._selected_tag_items())} 个标签作筛选条件"
+            )
+        else:
+            self.mode_hint_label.setText(
+                f"将批量操作 {len(self.current_image_ids)} 张选中图片"
+            )
+
     def on_selection_changed(self):
-        """标签选择变化时发射信号"""
-        selected_ids = []
-        for item in self.tag_list.selectedItems():
-            selected_ids.append(item.data(Qt.ItemDataRole.UserRole))
-        self.tag_selected.emit(selected_ids)
-        
-        # 如果有图片选中，启用打标签按钮
-        self.assign_btn.setEnabled(bool(self.current_image_ids) and len(selected_ids) > 0)
-    
+        selected_ids = self._selected_tag_ids()
+        selected_names = self._selected_tag_names()
+        self._update_hint_text()
+
+        if self.mode == "filter":
+            self.tag_selected.emit(selected_ids)
+            self.filter_tags_changed.emit(selected_names, self.match_mode)
+        else:
+            self.assign_btn.setEnabled(bool(self.current_image_ids) and len(selected_ids) > 0)
+
     def set_current_images(self, image_ids: list):
-        """设置当前选中的多张图片（支持多选）"""
         self.current_image_ids = image_ids
         n = len(image_ids)
         if n == 0:
@@ -119,84 +186,104 @@ class TagPanel(QWidget):
             self.selection_label.setText("已选中 1 张图片")
         else:
             self.selection_label.setText(f"已选中 {n} 张图片")
-        
+
         self.load_image_tags_multi(image_ids)
-        self.assign_btn.setEnabled(
-            bool(self.current_image_ids) and
-            len(self.tag_list.selectedItems()) > 0
-        )
-    
+        self._update_mode_ui()
+
     def set_current_image(self, image_id: int):
-        """向后兼容：设置单张图片"""
         self.set_current_images([image_id] if image_id is not None else [])
-    
+
     def load_image_tags(self, image_id: int):
-        """加载单张图片已有的标签（向后兼容）"""
         self.load_image_tags_multi([image_id] if image_id is not None else [])
-    
+
     def load_image_tags_multi(self, image_ids: list):
-        """加载多张图片的标签（显示所有图片共有标签）"""
         self.image_tag_list.clear()
         if not image_ids:
             return
-        
+
         if len(image_ids) == 1:
             rows = self.db.get_image_tags(image_ids[0])
             for row in rows:
-                tag_id, name, color = row
+                _, name, color = row
                 item = QListWidgetItem(name)
                 item.setBackground(QColor(color))
                 self.image_tag_list.addItem(item)
-        else:
-            # 多选：显示"部分共有"的标签情况
-            all_tag_sets = []
-            for img_id in image_ids:
-                rows = self.db.get_image_tags(img_id)
-                all_tag_sets.append({row[0]: row for row in rows})
-            
-            # 统计每个标签在多少张图片中存在
-            tag_counts: dict = {}
-            for tag_set in all_tag_sets:
-                for tag_id, row in tag_set.items():
-                    if tag_id not in tag_counts:
-                        tag_counts[tag_id] = {'row': row, 'count': 0}
-                    tag_counts[tag_id]['count'] += 1
-            
-            total = len(image_ids)
-            for tag_id, info in tag_counts.items():
-                tag_id_, name, color = info['row']
-                cnt = info['count']
-                label = name if cnt == total else f"{name}（{cnt}/{total}）"
-                item = QListWidgetItem(label)
-                item.setBackground(QColor(color))
-                self.image_tag_list.addItem(item)
-    
+            return
+
+        all_tag_sets = []
+        for img_id in image_ids:
+            rows = self.db.get_image_tags(img_id)
+            all_tag_sets.append({row[0]: row for row in rows})
+
+        tag_counts: dict = {}
+        for tag_set in all_tag_sets:
+            for tag_id, row in tag_set.items():
+                if tag_id not in tag_counts:
+                    tag_counts[tag_id] = {"row": row, "count": 0}
+                tag_counts[tag_id]["count"] += 1
+
+        total = len(image_ids)
+        for _, info in tag_counts.items():
+            _, name, color = info["row"]
+            cnt = info["count"]
+            label = name if cnt == total else f"{name}（{cnt}/{total}）"
+            item = QListWidgetItem(label)
+            item.setBackground(QColor(color))
+            self.image_tag_list.addItem(item)
+
     def assign_tags_to_image(self):
-        """给当前所有选中图片批量添加选中的标签"""
+        if not self.current_image_ids:
+            QMessageBox.warning(self, "提示", "请先在画廊中选择图片")
+            return
+
+        selected_names = self._selected_tag_names()
+        typed_name = self.tag_input.text().strip()
+        if typed_name and typed_name not in selected_names:
+            selected_names.append(typed_name)
+        if not selected_names:
+            QMessageBox.warning(self, "提示", "请先选择标签")
+            return
+
+        for tag_name in selected_names:
+            for image_id in self.current_image_ids:
+                self.db.add_tag_to_image(image_id, tag_name)
+
+        self.tag_input.clear()
+        self.load_tags()
+
+        self.load_image_tags_multi(self.current_image_ids)
+        self._refresh_selection_from_current_images()
+        self.tags_updated.emit()
+        QMessageBox.information(self, "完成", f"已给 {len(self.current_image_ids)} 张图片添加标签")
+
+    def _refresh_selection_from_current_images(self):
         if not self.current_image_ids:
             return
-        for item in self.tag_list.selectedItems():
+        common_tag_ids = None
+        for image_id in self.current_image_ids:
+            tag_ids = {row[0] for row in self.db.get_image_tags(image_id)}
+            common_tag_ids = tag_ids if common_tag_ids is None else (common_tag_ids & tag_ids)
+        common_tag_ids = common_tag_ids or set()
+
+        self.tag_list.blockSignals(True)
+        for i in range(self.tag_list.count()):
+            item = self.tag_list.item(i)
             tag_id = item.data(Qt.ItemDataRole.UserRole)
-            for img_id in self.current_image_ids:
-                self.db.add_image_tag(img_id, tag_id)
-        
-        self.load_image_tags_multi(self.current_image_ids)
-        n = len(self.current_image_ids)
-        QMessageBox.information(self, "完成", f"已给 {n} 张图片添加标签")
-    
+            item.setSelected(tag_id in common_tag_ids)
+        self.tag_list.blockSignals(False)
+        self.on_selection_changed()
+
     def show_context_menu(self, position):
-        """右键删除标签"""
         item = self.tag_list.itemAt(position)
         if not item:
             return
-        
         menu = QMenu(self)
         delete_action = menu.addAction("🗑️ 删除标签")
         action = menu.exec(self.tag_list.viewport().mapToGlobal(position))
-        
         if action == delete_action:
             tag_id = item.data(Qt.ItemDataRole.UserRole)
             reply = QMessageBox.question(self, "确认", f"删除标签 '{item.text()}'？")
             if reply == QMessageBox.StandardButton.Yes:
                 self.db.delete_tag(tag_id)
                 self.load_tags()
+                self.tags_updated.emit()

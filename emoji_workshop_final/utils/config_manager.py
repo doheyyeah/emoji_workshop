@@ -53,9 +53,24 @@ class ConfigManager:
                 "max_concurrent_downloads": 3,
                 "proxy": None               # 代理设置
             },
+            "ai": {
+                "provider": "pollinations",
+                "model": "doubao-seedream-3-0-t2i-250415",
+                "doubao_api_key": "",
+                "siliconflow_api_key": "",
+                "enabled_providers": ["pollinations"]
+            },
+            "llm": {
+                "enabled": False,
+                "provider_name": "Kimi",
+                "base_url": "https://api.moonshot.cn/v1",
+                "api_key": "",
+                "model": "moonshot-v1-8k"
+            },
             "behavior": {
                 "auto_save": True,          # 修改后自动保存配置
                 "confirm_delete": True,     # 删除前确认
+                "clipboard_monitor_enabled": False,
                 "recent_folders": [],       # 最近导入的文件夹（最多10个）
                 "recent_files": [],         # 最近打开的文件（最多10个）
                 "search_history": []        # 搜索历史（最多20条）
@@ -161,6 +176,37 @@ class ConfigManager:
         """递增统计计数器"""
         current = self.get(f"stats.{stat_key}", 0)
         self.set(f"stats.{stat_key}", current + 1)
+
+    def get_llm_config(self) -> dict:
+        """获取 LLM 配置"""
+        cfg = self.get("llm", {}) or {}
+        return {
+            "enabled": bool(cfg.get("enabled", False)),
+            "provider_name": cfg.get("provider_name", "Kimi"),
+            "base_url": cfg.get("base_url", "https://api.moonshot.cn/v1"),
+            "api_key": cfg.get("api_key", ""),
+            "model": cfg.get("model", "moonshot-v1-8k"),
+        }
+
+    def set_llm_config(
+        self,
+        provider_name: str,
+        base_url: str,
+        api_key: str,
+        model: str,
+        enabled: bool,
+    ) -> None:
+        """设置 LLM 配置"""
+        self.set("llm.provider_name", provider_name)
+        self.set("llm.base_url", base_url)
+        self.set("llm.api_key", api_key)
+        self.set("llm.model", model)
+        self.set("llm.enabled", enabled)
+
+    def is_llm_enabled(self) -> bool:
+        """是否启用 LLM（开启且填写了 key）"""
+        cfg = self.get_llm_config()
+        return bool(cfg.get("enabled") and cfg.get("api_key"))
 
     # ===== 内部工具方法 =====
 

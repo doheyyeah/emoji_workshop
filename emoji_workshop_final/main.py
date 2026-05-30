@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -16,13 +17,14 @@ from views.gallery_view import GalleryView
 from views.tag_panel import TagPanel
 from views.stats_panel import StatsPanel
 from views.settings_dialog import SettingsDialog
-from views.download_dialog import DownloadDialog
 from views.ai_generate_dialog import AIGenerateDialog
 from views.recommend_panel import RecommendPanel
 from views.report_view import ReportDialog
 from services.database_service import DatabaseService
+from services.clipboard_monitor import ClipboardMonitor
 from services.api_service import APIService
 from utils.config_manager import ConfigManager
+from utils.file_scanner import FileScanner
 
 
 class MainWindow(QMainWindow):
@@ -51,7 +53,14 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_ui()
 
-        self.statusBar().showMessage("表情工坊：AI 生成 + 智能推荐 + 性格画像 | 配置持久化 + 网络下载 + 数据统计")
+        self.clipboard_monitor = ClipboardMonitor()
+        self.clipboard_monitor.new_image_detected.connect(self._on_new_clipboard_image)
+        if self.config.get("behavior.clipboard_monitor_enabled", False):
+            self.clipboard_monitor.start()
+
+        self.statusBar().showMessage("就绪")
+        self.status_tip_label = QLabel("💡 想从网页保存图片? 浏览器右键 → 图片另存为 → 然后拖入本程序")
+        self.statusBar().addPermanentWidget(self.status_tip_label, 1)
 
     def _restore_window_state(self):
         """从配置恢复窗口位置和大小"""
@@ -77,13 +86,6 @@ class MainWindow(QMainWindow):
         ai_action.setShortcut("Ctrl+G")
         ai_action.triggered.connect(self._open_ai_dialog)
         file_menu.addAction(ai_action)
-
-        file_menu.addSeparator()
-
-        download_action = QAction("🌐 下载网络图片", self)
-        download_action.setShortcut("Ctrl+D")
-        download_action.triggered.connect(self._open_download_dialog)
-        file_menu.addAction(download_action)
 
         file_menu.addSeparator()
 
@@ -154,7 +156,8 @@ class MainWindow(QMainWindow):
         right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.tag_panel = TagPanel(self.db_service)
-        self.tag_panel.tag_selected.connect(self.on_tag_selected)
+        self.tag_panel.filter_tags_changed.connect(self.on_filter_tags_changed)
+        self.tag_panel.tags_updated.connect(self.on_tags_updated)
         right_splitter.addWidget(self.tag_panel)
 
         self.recommend_panel = RecommendPanel(self.db_service)
@@ -396,12 +399,10 @@ class MainWindow(QMainWindow):
             self.gallery.THUMBNAIL_SIZE = new_size
             self.gallery.list_widget.setIconSize(QSize(new_size, new_size))
             self.gallery.load_from_database()
-
-    def _open_download_dialog(self):
-        """打开网络下载对话框"""
-        dialog = DownloadDialog(self.db_service, self)
-        dialog.exec()
-        self.gallery.load_from_database()
+            if self.config.get("behavior.clipboard_monitor_enabled", False):
+                self.clipboard_monitor.start()
+            else:
+                self.clipboard_monitor.stop()
 
     def _toggle_right_panel(self):
         """切换右侧面板显示/隐藏（F9）"""
@@ -425,9 +426,32 @@ class MainWindow(QMainWindow):
         """多图选中时批量更新标签面板"""
         self.tag_panel.set_current_images(image_ids)
 
-    def on_tag_selected(self, tag_ids: list):
+    def on_filter_tags_changed(self, tag_names: list, match_mode: str):
         """标签选择变化时筛选画廊"""
-        self.gallery.filter_by_tags(tag_ids)
+        self.gallery.filter_by_tag_names(tag_names, match_mode)
+
+    def on_tags_updated(self):
+        """标签更新后刷新当前画廊"""
+        self.gallery.load_from_database()
+
+    def _on_new_clipboard_image(self, image):
+        reply = QMessageBox.question(
+            self,
+            "检测到剪贴板图片",
+            "检测到新图片，是否加入库？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        save_dir = Path(self.config.get("paths.last_import_folder", str(Path.home() / "Pictures")))
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"clipboard_{int(time.time())}.png"
+        image.save(str(save_path))
+        info = FileScanner.get_image_info(str(save_path))
+        if info:
+            self.db_service.add_image(**info)
+            self.gallery.load_from_database()
+            self.statusBar().showMessage("已从剪贴板加入图片到库", 2000)
 
     def closeEvent(self, event):
         """关闭时保存窗口状态"""

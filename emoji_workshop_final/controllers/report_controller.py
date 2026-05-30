@@ -79,10 +79,8 @@ class ReportController:
                 "summary_text": str,
             }
         """
-        since = self._calc_since(period)
+        since, period_label = self._calc_since_and_label(period)
         records = self.db.get_usage_history(since)
-
-        period_label = {"week": "本周", "month": "本月", "all": "全部时间"}.get(period, "全部时间")
         total_uses = len(records)
 
         if total_uses == 0:
@@ -150,16 +148,22 @@ class ReportController:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _calc_since(period: str) -> str | None:
-        """计算时间范围的起始时间字符串（ISO 格式）"""
+    def _calc_since_and_label(period: str) -> tuple[str | None, str]:
+        """计算时间范围与显示标签"""
         now = datetime.now()
         if period == "week":
-            since = now - timedelta(weeks=1)
+            week_start = now - timedelta(days=now.weekday())
+            week_end = week_start + timedelta(days=6)
+            week_no = now.isocalendar().week
+            label = f"{now.year}年第{week_no}周({week_start:%m-%d} ~ {week_end:%m-%d})"
+            since = week_start
         elif period == "month":
-            since = now - timedelta(days=30)
+            label = f"{now.year}年{now.month}月"
+            since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         else:
-            return None
-        return since.isoformat()
+            since = datetime(now.year, 1, 1)
+            label = f"{since:%Y-%m-%d} 至今"
+        return since.isoformat() if since else None, label
 
     @staticmethod
     def _empty_report(period_label: str) -> dict:
@@ -216,6 +220,7 @@ class ReportController:
         lines: list[str] = []
 
         lines.append(f"<h2>🎭 {period_label}性格画像报告</h2>")
+        lines.append("<p style='font-size:12px;color:#888;'>📊 统计规则:每次双击图片(自动复制到剪贴板)记为 1 次使用</p>")
         lines.append(f"<p>📊 {period_label}共使用表情 <b>{total_uses}</b> 次，")
         lines.append(f"你在 <b>{peak_period}</b> 最为活跃。</p>")
 

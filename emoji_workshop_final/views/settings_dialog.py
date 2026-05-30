@@ -51,12 +51,15 @@ class SettingsDialog(QDialog):
         self.advanced_tab = self._create_advanced_tab()
         self.tabs.addTab(self.advanced_tab, "高级")
 
-        # 底部按钮
+        # 底部按钮（全部中文）
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save |
             QDialogButtonBox.StandardButton.Cancel |
             QDialogButtonBox.StandardButton.RestoreDefaults
         )
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText("保存")
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("取消")
+        buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).setText("恢复默认")
         buttons.accepted.connect(self._save_and_close)
         buttons.rejected.connect(self.reject)
         buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(
@@ -106,10 +109,12 @@ class SettingsDialog(QDialog):
         recent_group = QGroupBox("最近导入的文件夹")
         recent_layout = QVBoxLayout()
         self.recent_list = QListWidget()
-        self.recent_list.setMaximumHeight(100)
+        self.recent_list.setMaximumHeight(120)
+        self.recent_list.itemDoubleClicked.connect(self._on_recent_folder_dblclick)
         recent_layout.addWidget(self.recent_list)
+        recent_layout.addWidget(QLabel("（双击可重新导入该文件夹）"))
 
-        clear_recent_btn = QPushButton("清空记录")
+        clear_recent_btn = QPushButton("清空历史")
         clear_recent_btn.clicked.connect(self._clear_recent)
         recent_layout.addWidget(clear_recent_btn)
 
@@ -241,9 +246,9 @@ class SettingsDialog(QDialog):
         self.auto_save_check.setChecked(self.config.get("behavior.auto_save", True))
         self.confirm_delete_check.setChecked(self.config.get("behavior.confirm_delete", True))
 
-        # 最近文件夹
+        # 最近文件夹（使用 get_recent_folders 方法确保兼容）
         self.recent_list.clear()
-        for folder in self.config.get("behavior.recent_folders", []):
+        for folder in self.config.get_recent_folders():
             self.recent_list.addItem(folder)
 
         # 路径
@@ -301,6 +306,21 @@ class SettingsDialog(QDialog):
     def _clear_recent(self):
         self.config.set("behavior.recent_folders", [])
         self.recent_list.clear()
+    
+    def _on_recent_folder_dblclick(self, item):
+        """双击最近文件夹项，通知主窗口导入该文件夹"""
+        folder = item.text()
+        from pathlib import Path as _Path
+        if not _Path(folder).exists():
+            QMessageBox.warning(self, "警告", f"文件夹不存在：{folder}")
+            return
+        # 通知父窗口（MainWindow）触发导入
+        parent = self.parent()
+        if parent and hasattr(parent, 'gallery'):
+            self.accept()
+            count = parent.gallery.import_folder_path(folder)
+            parent.gallery.load_from_database()
+            QMessageBox.information(parent, "导入完成", f"已从最近文件夹导入 {count} 张图片")
 
     def _restore_defaults(self):
         reply = QMessageBox.question(

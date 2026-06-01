@@ -241,6 +241,39 @@ class SettingsDialog(QDialog):
 
         group.setLayout(form)
         layout.addWidget(group)
+
+        # === 视觉精排组 ===
+        vision_group = QGroupBox("视觉精排（可选）")
+        vision_form = QFormLayout()
+
+        self.vision_enabled_check = QCheckBox("启用视觉精排（需要视觉模型 API Key）")
+        vision_form.addRow(self.vision_enabled_check)
+
+        self.vision_provider_combo = QComboBox()
+        self.vision_provider_combo.addItems(["智谱 GLM-4V-Flash (免费)", "Kimi Vision", "自定义"])
+        self.vision_provider_combo.currentIndexChanged.connect(self._on_vision_provider_changed)
+        vision_form.addRow("提供商预设:", self.vision_provider_combo)
+
+        self.vision_base_url_edit = QLineEdit()
+        vision_form.addRow("Base URL:", self.vision_base_url_edit)
+
+        self.vision_api_key_edit = QLineEdit()
+        self.vision_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        vision_form.addRow("API Key:", self.vision_api_key_edit)
+
+        self.vision_model_edit = QLineEdit()
+        vision_form.addRow("Model:", self.vision_model_edit)
+
+        self.vision_test_btn = QPushButton("测试连接")
+        self.vision_test_btn.clicked.connect(self._test_vision_connection)
+        vision_form.addRow("", self.vision_test_btn)
+
+        self.vision_test_result = QLabel("未测试")
+        vision_form.addRow("状态:", self.vision_test_result)
+
+        vision_group.setLayout(vision_form)
+        layout.addWidget(vision_group)
+
         layout.addStretch()
         return tab
 
@@ -318,6 +351,13 @@ class SettingsDialog(QDialog):
         self.llm_model_edit.setText(llm["model"])
         self._sync_llm_provider_combo(llm["provider_name"])
 
+        vision = self.config.get_vision_config()
+        self.vision_enabled_check.setChecked(vision.get("enabled", False))
+        self.vision_base_url_edit.setText(vision.get("base_url", ""))
+        self.vision_api_key_edit.setText(vision.get("api_key", ""))
+        self.vision_model_edit.setText(vision.get("model", ""))
+        self._sync_vision_provider_combo(vision.get("provider_name", "智谱 GLM-4V-Flash (免费)"))
+
         # 统计
         self.stat_imported_label.setText(str(self.config.get("stats.total_imported", 0)))
         self.stat_tags_label.setText(str(self.config.get("stats.total_tags_created", 0)))
@@ -357,6 +397,14 @@ class SettingsDialog(QDialog):
             api_key=self.llm_api_key_edit.text().strip(),
             model=self.llm_model_edit.text().strip(),
             enabled=self.llm_enabled_check.isChecked(),
+        )
+
+        self.config.set_vision_config(
+            provider_name=self.vision_provider_combo.currentText(),
+            base_url=self.vision_base_url_edit.text().strip(),
+            api_key=self.vision_api_key_edit.text().strip(),
+            model=self.vision_model_edit.text().strip(),
+            enabled=self.vision_enabled_check.isChecked(),
         )
 
         # 强制保存
@@ -498,3 +546,39 @@ class SettingsDialog(QDialog):
             self.llm_test_result.setText("❌ 连接失败")
             self.llm_test_result.setStyleSheet("color: #ff6b6b;")
             self.llm_test_result.setToolTip(str(exc))
+
+    def _sync_vision_provider_combo(self, provider_name: str):
+        self.vision_provider_combo.setCurrentText(provider_name)
+
+    def _on_vision_provider_changed(self, *_):
+        presets = {
+            "智谱 GLM-4V-Flash (免费)": ("https://open.bigmodel.cn/api/paas/v4", "glm-4v-flash"),
+            "Kimi Vision": ("https://api.moonshot.cn/v1", "moonshot-v1-8k-vision-preview"),
+        }
+        text = self.vision_provider_combo.currentText()
+        if text in presets:
+            base_url, model = presets[text]
+            self.vision_base_url_edit.setText(base_url)
+            self.vision_model_edit.setText(model)
+
+    def _test_vision_connection(self):
+        from services.vision_service import VisionService
+
+        try:
+            svc = VisionService(
+                base_url=self.vision_base_url_edit.text().strip(),
+                api_key=self.vision_api_key_edit.text().strip(),
+                model=self.vision_model_edit.text().strip(),
+            )
+            ok, msg = svc.test_connection()
+            if ok:
+                self.vision_test_result.setText("✅ 连接成功")
+                self.vision_test_result.setStyleSheet("color: #51cf66;")
+            else:
+                self.vision_test_result.setText("❌ 连接失败")
+                self.vision_test_result.setStyleSheet("color: #ff6b6b;")
+                self.vision_test_result.setToolTip(msg)
+        except Exception as exc:
+            self.vision_test_result.setText("❌ 连接失败")
+            self.vision_test_result.setStyleSheet("color: #ff6b6b;")
+            self.vision_test_result.setToolTip(str(exc))

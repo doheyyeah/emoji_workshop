@@ -53,6 +53,13 @@ class ReportDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
+        # --- 统计规则说明 ---
+        stats_rule_label = QLabel(
+            "📊 统计规则：每次双击图片（自动复制到剪贴板）记为 1 次使用"
+        )
+        stats_rule_label.setStyleSheet("color: #888; font-size: 11px; padding: 2px 4px;")
+        layout.addWidget(stats_rule_label)
+
         # --- 顶部工具栏 ---
         toolbar = QHBoxLayout()
 

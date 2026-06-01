@@ -74,11 +74,6 @@ class RecommendPanel(QWidget):
         btn_row.addWidget(self.goto_settings_btn)
         layout.addLayout(btn_row)
 
-        self.llm_tags_label = QLabel("💡 LLM 推荐的标签：—")
-        self.llm_tags_label.setWordWrap(True)
-        self.llm_tags_label.setStyleSheet("color: #aaa; font-size: 11px;")
-        layout.addWidget(self.llm_tags_label)
-
         self.error_label = QLabel("⚠️ 请先在 设置 → AI 推荐 中配置 LLM API Key")
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("color: #ff6b6b; font-size: 11px;")
@@ -116,8 +111,6 @@ class RecommendPanel(QWidget):
         try:
             results = self.controller.recommend(context, top_k=6)
             tags = self.controller.last_recommended_tags
-            tag_text = "、".join(tags) if tags else "—"
-            self.llm_tags_label.setText(f"💡 LLM 推荐的标签：{tag_text}")
             self.error_label.setText("")
             self.error_label.setVisible(False)
             self.goto_settings_btn.setVisible(False)
@@ -125,13 +118,12 @@ class RecommendPanel(QWidget):
         except Exception as exc:
             self.result_list.clear()
             self.hint_label.setText("推荐失败")
-            self.llm_tags_label.setText("💡 LLM 推荐的标签：—")
             self.error_label.setText(str(exc))
             self.error_label.setVisible(True)
             self.goto_settings_btn.setVisible(True)
 
     def _show_results(self, models) -> None:
-        """将推荐结果渲染到列表"""
+        """将推荐结果渲染到列表，第 1 项添加 ⭐ 最佳推荐角标"""
         self.result_list.clear()
 
         if not models:
@@ -140,9 +132,16 @@ class RecommendPanel(QWidget):
 
         self.hint_label.setText("双击结果可复制到剪贴板")
 
-        for model in models:
+        for idx, model in enumerate(models):
             item = QListWidgetItem()
-            item.setText(model.display_name)
+            # 第 1 个结果加 ⭐ 角标
+            if idx == 0:
+                item.setText(f"⭐ 最佳推荐 | {model.display_name}")
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            else:
+                item.setText(model.display_name)
             item.setData(Qt.ItemDataRole.UserRole, model.id)
             item.setData(Qt.ItemDataRole.UserRole + 1, model.file_path)
 

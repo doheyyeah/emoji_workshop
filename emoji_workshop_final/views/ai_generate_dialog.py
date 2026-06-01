@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
+    QColorDialog,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -14,6 +15,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QProgressBar,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QTextEdit,
@@ -23,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from services.ai_service import AIService
 from services.database_service import DatabaseService
-from services.gif_generator import GifGenerator
+from services.gif_generator import GifGenerator, AnimationMode, ANIMATION_MODE_NAMES
 from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
@@ -39,6 +41,7 @@ class AIGenerateDialog(QDialog):
         self.worker = None
         self.generated_path = None
         self.gif_path = None
+        self.gif_path_b = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
         self.setMinimumSize(650, 760)
@@ -77,7 +80,7 @@ class AIGenerateDialog(QDialog):
         settings_layout = QFormLayout()
         self.provider_combo = QComboBox()
         self.provider_display_map = {
-            "doubao": "豆包 (火山引擎)",
+            "doubao": "豆包 Seedream 5.0 Lite",
             "pollinations": "Pollinations (免费)",
         }
         settings_layout.addRow("AI 提供商:", self.provider_combo)
@@ -146,39 +149,130 @@ class AIGenerateDialog(QDialog):
 
     def _setup_gif_tab(self):
         layout = QVBoxLayout(self.gif_tab)
-        mode_group = QGroupBox("动图模式")
-        mode_form = QFormLayout()
-        self.gif_mode_combo = QComboBox()
-        self.gif_mode_combo.addItems(["静图+文字动画", "多帧 AI 拼接"])
-        mode_form.addRow("模式:", self.gif_mode_combo)
+
+        # 使用子标签页区分模式 A 和模式 B
+        self.gif_sub_tabs = QTabWidget()
+        layout.addWidget(self.gif_sub_tabs)
+
+        # === 模式 A：静图 + 文字动画 ===
+        mode_a_tab = QWidget()
+        a_layout = QVBoxLayout(mode_a_tab)
+
+        a_group = QGroupBox("背景图与文字")
+        a_form = QFormLayout()
+
+        # 选择背景图
         self.gif_base_edit = QLineEdit()
-        base_btn = QPushButton("选择图片")
+        self.gif_base_edit.setPlaceholderText("选择背景图片...")
+        base_btn = QPushButton("浏览...")
         base_btn.clicked.connect(self._browse_base_image)
         base_layout = QHBoxLayout()
         base_layout.addWidget(self.gif_base_edit)
         base_layout.addWidget(base_btn)
-        mode_form.addRow("基础图片:", base_layout)
+        a_form.addRow("背景图:", base_layout)
+
+        # 叠加文字
         self.gif_text_edit = QLineEdit()
-        self.gif_text_edit.setPlaceholderText("输入动图文字")
-        mode_form.addRow("叠加文字:", self.gif_text_edit)
-        mode_group.setLayout(mode_form)
-        layout.addWidget(mode_group)
+        self.gif_text_edit.setMaxLength(20)
+        self.gif_text_edit.setPlaceholderText("输入文字（最多 20 字）")
+        a_form.addRow("叠加文字:", self.gif_text_edit)
+
+        # 动画方式
+        self.anim_mode_combo = QComboBox()
+        self.anim_mode_combo.addItems(ANIMATION_MODE_NAMES)
+        a_form.addRow("动画方式:", self.anim_mode_combo)
+
+        # 字体大小
+        self.font_size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.font_size_slider.setRange(20, 60)
+        self.font_size_slider.setValue(36)
+        self.font_size_label = QLabel("36")
+        self.font_size_slider.valueChanged.connect(
+            lambda v: self.font_size_label.setText(str(v))
+        )
+        font_size_layout = QHBoxLayout()
+        font_size_layout.addWidget(self.font_size_slider)
+        font_size_layout.addWidget(self.font_size_label)
+        a_form.addRow("字体大小:", font_size_layout)
+
+        # 文字颜色
+        self._gif_text_color = "#FFE600"
+        self.color_btn = QPushButton("选择颜色")
+        self.color_btn.setStyleSheet(f"background-color: {self._gif_text_color};")
+        self.color_btn.clicked.connect(self._pick_text_color)
+        a_form.addRow("文字颜色:", self.color_btn)
+
+        a_group.setLayout(a_form)
+        a_layout.addWidget(a_group)
 
         self.gif_generate_btn = QPushButton("🎞 生成动图")
-        self.gif_generate_btn.clicked.connect(self._generate_gif)
-        layout.addWidget(self.gif_generate_btn)
+        self.gif_generate_btn.clicked.connect(self._generate_gif_mode_a)
+        a_layout.addWidget(self.gif_generate_btn)
 
         self.gif_preview = QLabel("GIF 预览")
         self.gif_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.gif_preview.setMinimumHeight(240)
-        self.gif_preview.setStyleSheet("QLabel { background-color: #2d2d2d; color: #888; border: 2px dashed #555; border-radius: 8px; }")
-        layout.addWidget(self.gif_preview)
+        self.gif_preview.setMinimumHeight(200)
+        self.gif_preview.setStyleSheet(
+            "QLabel { background-color: #2d2d2d; color: #888; border: 2px dashed #555; border-radius: 8px; }"
+        )
+        a_layout.addWidget(self.gif_preview)
 
         self.gif_save_btn = QPushButton("➕ 保存到库")
         self.gif_save_btn.setEnabled(False)
         self.gif_save_btn.clicked.connect(self._import_generated_gif)
-        layout.addWidget(self.gif_save_btn)
-        layout.addStretch()
+        a_layout.addWidget(self.gif_save_btn)
+        a_layout.addStretch()
+
+        self.gif_sub_tabs.addTab(mode_a_tab, "静图+文字动画")
+
+        # === 模式 B：多帧 AI 拼接 ===
+        mode_b_tab = QWidget()
+        b_layout = QVBoxLayout(mode_b_tab)
+
+        warn_label = QLabel(
+            "⚠️ 此模式需要调用 AI API 多次，耗时约 30 秒，效果可能不稳定"
+        )
+        warn_label.setWordWrap(True)
+        warn_label.setStyleSheet("color: #ff6b6b; font-weight: bold; padding: 4px;")
+        b_layout.addWidget(warn_label)
+
+        b_form = QFormLayout()
+
+        # 帧数
+        self.gif_frames_spin = QSpinBox()
+        self.gif_frames_spin.setRange(3, 5)
+        self.gif_frames_spin.setValue(4)
+        b_form.addRow("帧数:", self.gif_frames_spin)
+
+        # 帧间隔
+        self.gif_duration_spin = QSpinBox()
+        self.gif_duration_spin.setRange(150, 500)
+        self.gif_duration_spin.setSingleStep(50)
+        self.gif_duration_spin.setValue(200)
+        self.gif_duration_spin.setSuffix(" ms")
+        b_form.addRow("帧间隔:", self.gif_duration_spin)
+
+        b_layout.addLayout(b_form)
+
+        self.gif_b_generate_btn = QPushButton("🎞 生成多帧 GIF")
+        self.gif_b_generate_btn.clicked.connect(self._generate_gif_mode_b)
+        b_layout.addWidget(self.gif_b_generate_btn)
+
+        self.gif_b_preview = QLabel("GIF 预览")
+        self.gif_b_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.gif_b_preview.setMinimumHeight(200)
+        self.gif_b_preview.setStyleSheet(
+            "QLabel { background-color: #2d2d2d; color: #888; border: 2px dashed #555; border-radius: 8px; }"
+        )
+        b_layout.addWidget(self.gif_b_preview)
+
+        self.gif_b_save_btn = QPushButton("➕ 保存到库")
+        self.gif_b_save_btn.setEnabled(False)
+        self.gif_b_save_btn.clicked.connect(self._import_generated_gif_b)
+        b_layout.addWidget(self.gif_b_save_btn)
+        b_layout.addStretch()
+
+        self.gif_sub_tabs.addTab(mode_b_tab, "多帧 AI 拼接")
 
     def _on_prompt_changed(self):
         text = self.prompt_edit.toPlainText()
@@ -215,7 +309,9 @@ class AIGenerateDialog(QDialog):
             if self.provider_combo.itemData(i) == preferred:
                 self.provider_combo.setCurrentIndex(i)
                 break
-        self.apikey_edit.setText(self.config.get("ai.doubao_api_key", ""))
+        ai_cfg = self.config.get_ai_provider_config()
+        # 优先读新路径 ai_providers.doubao.api_key；兼容旧路径 ai.doubao_api_key（向后兼容旧配置文件）
+        self.apikey_edit.setText(ai_cfg["doubao"].get("api_key") or self.config.get("ai.doubao_api_key", ""))
 
     def _start_generation(self):
         prompt = self.prompt_edit.toPlainText().strip()
@@ -233,7 +329,10 @@ class AIGenerateDialog(QDialog):
         save_path = str(Path(save_dir) / filename)
         provider = self.provider_combo.currentData()
         if provider == "doubao":
-            self.config.set("ai.doubao_api_key", self.apikey_edit.text().strip())
+            api_key = self.apikey_edit.text().strip()
+            self.config.set("ai.doubao_api_key", api_key)
+            self.config.set("ai_providers.doubao.api_key", api_key)
+            self.config.set("ai_providers.doubao.enabled", bool(api_key))
         self.config.set("ai.provider", provider)
 
         self.progress.setVisible(True)
@@ -294,37 +393,74 @@ class AIGenerateDialog(QDialog):
         self.preview_label.setText("生成失败")
         QMessageBox.critical(self, "生成失败", "生成失败,请检查 API Key 或更换提供商")
 
-    def _generate_gif(self):
-        save_dir = self.save_edit.text().strip() or str(Path.home() / "Desktop")
-        output_path = str(Path(save_dir) / "generated_emoji.gif")
-        mode = self.gif_mode_combo.currentText()
-        try:
-            if mode == "静图+文字动画":
-                base = self.gif_base_edit.text().strip()
-                if not base:
-                    QMessageBox.warning(self, "提示", "请先选择基础图片")
-                    return
-                text = self.gif_text_edit.text().strip() or "哈哈哈"
-                self.gif_path = GifGenerator.make_text_animated_gif(base, text, output_path)
-            else:
-                prompt = self.prompt_edit.toPlainText().strip() or "funny emoji"
-                temp_paths = []
-                for i in range(4):
-                    path = str(Path(save_dir) / f"gif_frame_{i}.png")
-                    self.ai.generate_image(
-                        prompt=prompt,
-                        save_path=path,
-                        provider=self.provider_combo.currentData(),
-                    ).wait(120000)
-                    temp_paths.append(path)
-                self.gif_path = GifGenerator.make_multiframe_gif(temp_paths, output_path)
+    def _pick_text_color(self):
+        from PyQt6.QtGui import QColor
+        color = QColorDialog.getColor(QColor(self._gif_text_color), self, "选择文字颜色")
+        if color.isValid():
+            self._gif_text_color = color.name()
+            self.color_btn.setStyleSheet(f"background-color: {self._gif_text_color};")
 
+    def _generate_gif_mode_a(self):
+        """模式 A：静图 + 文字动画"""
+        base = self.gif_base_edit.text().strip()
+        if not base:
+            QMessageBox.warning(self, "提示", "请先选择背景图片")
+            return
+        text = self.gif_text_edit.text().strip()
+        if not text:
+            QMessageBox.warning(self, "提示", "请输入叠加文字")
+            return
+        save_dir = self.save_edit.text().strip() or str(Path.home() / "Desktop")
+        output_path = str(Path(save_dir) / "animated_emoji.gif")
+        mode_name = self.anim_mode_combo.currentText()
+        font_size = self.font_size_slider.value()
+        try:
+            self.gif_path = GifGenerator.make_text_animated_gif(
+                base_image_path=base,
+                text=text,
+                output_path=output_path,
+                mode=mode_name,
+                font_size=font_size,
+                text_color=self._gif_text_color,
+            )
             self.gif_preview.setPixmap(QPixmap(self.gif_path))
             self.gif_preview.setStyleSheet("QLabel { border: none; }")
             self.gif_save_btn.setEnabled(True)
+            QMessageBox.information(self, "完成", "动图生成成功！")
         except Exception as exc:
             QMessageBox.critical(self, "生成失败", "生成失败,请检查 API Key 或更换提供商")
-            self.status_label.setToolTip(str(exc))
+            self.gif_preview.setToolTip(str(exc))
+
+    def _generate_gif_mode_b(self):
+        """模式 B：多帧 AI 拼接"""
+        prompt = self.prompt_edit.toPlainText().strip() or "funny emoji"
+        save_dir = self.save_edit.text().strip() or str(Path.home() / "Desktop")
+        output_path = str(Path(save_dir) / "multiframe_emoji.gif")
+        frame_count = self.gif_frames_spin.value()
+        duration = self.gif_duration_spin.value()
+        try:
+            temp_paths = []
+            for i in range(frame_count):
+                path = str(Path(save_dir) / f"gif_frame_{i}.png")
+                worker = self.ai.generate_image(
+                    prompt=prompt,
+                    save_path=path,
+                    provider=self.provider_combo.currentData(),
+                )
+                worker.wait(120000)
+                temp_paths.append(path)
+            self.gif_path_b = GifGenerator.make_multiframe_gif(temp_paths, output_path, duration=duration)
+            self.gif_b_preview.setPixmap(QPixmap(self.gif_path_b))
+            self.gif_b_preview.setStyleSheet("QLabel { border: none; }")
+            self.gif_b_save_btn.setEnabled(True)
+            QMessageBox.information(self, "完成", "多帧 GIF 生成成功！")
+        except Exception as exc:
+            QMessageBox.critical(self, "生成失败", "生成失败,请检查 API Key 或更换提供商")
+            self.gif_b_preview.setToolTip(str(exc))
+
+    def _generate_gif(self):
+        """兼容旧接口（自动路由到模式 A）"""
+        self._generate_gif_mode_a()
 
     def _import_generated(self):
         if not self.generated_path or not Path(self.generated_path).exists():
@@ -345,6 +481,15 @@ class AIGenerateDialog(QDialog):
             QMessageBox.warning(self, "错误", "没有可导入的 GIF")
             return
         info = FileScanner.get_image_info(self.gif_path)
+        if info:
+            self.db.add_image(**info)
+            QMessageBox.information(self, "成功", "GIF 已保存到库")
+
+    def _import_generated_gif_b(self):
+        if not self.gif_path_b or not Path(self.gif_path_b).exists():
+            QMessageBox.warning(self, "错误", "没有可导入的 GIF")
+            return
+        info = FileScanner.get_image_info(self.gif_path_b)
         if info:
             self.db.add_image(**info)
             QMessageBox.information(self, "成功", "GIF 已保存到库")

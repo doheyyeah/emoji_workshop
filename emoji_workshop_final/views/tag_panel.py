@@ -21,6 +21,7 @@ class TagPanel(QWidget):
         super().__init__(parent)
         self.db = db_service
         self.current_image_ids: list = []
+        self._last_nonempty_selection: list = []  # 缓存上一次非空选中列表，防止失焦时清空
         self.mode = "filter"      # filter | tagging
         self.match_mode = "union"  # union | intersect
         self.setup_ui()
@@ -178,7 +179,10 @@ class TagPanel(QWidget):
             self.assign_btn.setEnabled(bool(self.current_image_ids) and len(selected_ids) > 0)
 
     def set_current_images(self, image_ids: list):
+        """更新当前选中图片列表。若新列表非空则同步更新缓存；为空时保留缓存（防止失焦清空）。"""
         self.current_image_ids = image_ids
+        if image_ids:
+            self._last_nonempty_selection = list(image_ids)
         n = len(image_ids)
         if n == 0:
             self.selection_label.setText("未选中图片")
@@ -188,6 +192,14 @@ class TagPanel(QWidget):
             self.selection_label.setText(f"已选中 {n} 张图片")
 
         self.load_image_tags_multi(image_ids)
+        self._update_mode_ui()
+
+    def clear_selection(self):
+        """明确清空缓存（由 GalleryView 在用户点击空白处或按 Esc 时调用）。"""
+        self.current_image_ids = []
+        self._last_nonempty_selection = []
+        self.selection_label.setText("未选中图片")
+        self.image_tag_list.clear()
         self._update_mode_ui()
 
     def set_current_image(self, image_id: int):
@@ -232,8 +244,9 @@ class TagPanel(QWidget):
             self.image_tag_list.addItem(item)
 
     def assign_tags_to_image(self):
-        if not self.current_image_ids:
-            QMessageBox.warning(self, "提示", "请先在画廊中选择图片")
+        ids = self._last_nonempty_selection
+        if not ids:
+            QMessageBox.information(self, "提示", "请先在画廊中选中至少 1 张图片")
             return
 
         selected_names = self._selected_tag_names()
@@ -245,16 +258,20 @@ class TagPanel(QWidget):
             return
 
         for tag_name in selected_names:
-            for image_id in self.current_image_ids:
+            for image_id in ids:
                 self.db.add_tag_to_image(image_id, tag_name)
 
+        tag_name_for_msg = selected_names[0] if len(selected_names) == 1 else "、".join(selected_names)
         self.tag_input.clear()
         self.load_tags()
 
         self.load_image_tags_multi(self.current_image_ids)
         self._refresh_selection_from_current_images()
         self.tags_updated.emit()
-        QMessageBox.information(self, "完成", f"已给 {len(self.current_image_ids)} 张图片添加标签")
+        QMessageBox.information(
+            self, "完成",
+            f"已给 {len(ids)} 张图片打标签『{tag_name_for_msg}』"
+        )
 
     def _refresh_selection_from_current_images(self):
         if not self.current_image_ids:

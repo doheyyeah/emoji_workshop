@@ -6,6 +6,8 @@ from urllib.parse import quote
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from services.providers.doubao_provider import DoubaoProvider
+from services.providers.pollinations_provider import PollinationsProvider
 from utils.config_manager import ConfigManager
 
 
@@ -16,60 +18,6 @@ class AIProvider:
 
     def generate(self, prompt: str, width: int = 512, height: int = 512, **kwargs) -> bytes:
         raise NotImplementedError
-
-
-class PollinationsProvider(AIProvider):
-    """免费兜底"""
-
-    name = "Pollinations (免费)"
-
-    def generate(self, prompt: str, width: int = 512, height: int = 512, **kwargs) -> bytes:
-        url = (
-            f"https://image.pollinations.ai/prompt/{quote(prompt)}"
-            f"?width={width}&height={height}&seed={kwargs.get('seed', 42)}&nologo=true&nofeed=true"
-        )
-        response = requests.get(url, timeout=120)
-        response.raise_for_status()
-        return response.content
-
-
-class DoubaoProvider(AIProvider):
-    """豆包（火山引擎）"""
-
-    name = "豆包 (火山引擎)"
-    endpoint = "https://ark.cn-beijing.volces.com/api/v3/images/generations"
-
-    def generate(self, prompt: str, width: int = 1024, height: int = 1024, **kwargs) -> bytes:
-        api_key = kwargs.get("api_key", "")
-        if not api_key:
-            raise RuntimeError("缺少 API Key")
-
-        model = kwargs.get("model", "doubao-seedream-3-0-t2i-250415")
-        response = requests.post(
-            self.endpoint,
-            headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "prompt": prompt,
-                "size": f"{width}x{height}",
-            },
-            timeout=120,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        data = payload.get("data") or []
-        if not data:
-            raise RuntimeError("返回内容为空")
-        first = data[0]
-        b64_data = first.get("b64_json")
-        image_url = first.get("url")
-        if b64_data:
-            return base64.b64decode(b64_data)
-        if image_url:
-            img_resp = requests.get(image_url, timeout=60)
-            img_resp.raise_for_status()
-            return img_resp.content
-        raise RuntimeError("返回格式不支持")
 
 
 class AIGenerateWorker(QThread):
@@ -104,18 +52,27 @@ class AIGenerateWorker(QThread):
 class AIService:
     """AI 生成服务外观类"""
 
+    # 已注册的提供商
+    PROVIDERS = {
+        "pollinations": PollinationsProvider(),
+        "doubao": DoubaoProvider(),
+    }
+
     def __init__(self):
         self.config = ConfigManager()
         self._active_workers: list[AIGenerateWorker] = []
-        self.providers = {
-            "pollinations": PollinationsProvider(),
-            "doubao": DoubaoProvider(),
-        }
+        self.providers = self.PROVIDERS
 
     def get_enabled_providers(self) -> list[str]:
-        enabled = self.config.get("ai.enabled_providers", ["pollinations"])
-        if "pollinations" not in enabled:
-            enabled.append("pollinations")
+        """返回当前已启用的提供商 key 列表（pollinations 始终保留）"""
+        ai_cfg = self.config.get_ai_provider_config()
+        enabled = []
+        # 豆包（需要 api_key）
+        doubao_cfg = ai_cfg.get("doubao", {})
+        if doubao_cfg.get("enabled") or doubao_cfg.get("api_key"):
+            enabled.append("doubao")
+        # Pollinations 始终可用
+        enabled.append("pollinations")
         return enabled
 
     def generate_image(
@@ -135,8 +92,9 @@ class AIService:
 
         worker_kwargs = dict(kwargs)
         if provider_key == "doubao":
-            worker_kwargs["api_key"] = self.config.get("ai.doubao_api_key", "")
-            worker_kwargs["model"] = self.config.get("ai.model", "doubao-seedream-3-0-t2i-250415")
+            ai_cfg = self.config.get_ai_provider_config()
+            worker_kwargs["api_key"] = ai_cfg["doubao"].get("api_key") or self.config.get("ai.doubao_api_key", "")
+            worker_kwargs["model"] = ai_cfg["doubao"].get("model", "doubao-seedream-5-0-260128")
 
         worker = AIGenerateWorker(provider_obj, prompt, save_path, width, height, **worker_kwargs)
 

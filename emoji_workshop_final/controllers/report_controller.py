@@ -161,7 +161,7 @@ class ReportController:
             label = f"{now.year}年{now.month}月"
             since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         else:
-            since = datetime(now.year, 1, 1)
+            since = datetime(2026, 1, 1)
             label = f"{since:%Y-%m-%d} 至今"
         return since.isoformat() if since else None, label
 

@@ -67,6 +67,22 @@ class ConfigManager:
                 "api_key": "",
                 "model": "moonshot-v1-8k"
             },
+            "ai_providers": {
+                "active": "doubao",
+                "pollinations": {"enabled": True},
+                "doubao": {
+                    "enabled": False,
+                    "api_key": "",
+                    "model": "doubao-seedream-5-0-260128"
+                }
+            },
+            "vision": {
+                "enabled": False,
+                "provider_name": "智谱 GLM-4V-Flash (免费)",
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "api_key": "",
+                "model": "glm-4v-flash"
+            },
             "behavior": {
                 "auto_save": True,          # 修改后自动保存配置
                 "confirm_delete": True,     # 删除前确认
@@ -207,6 +223,42 @@ class ConfigManager:
         """是否启用 LLM（开启且填写了 key）"""
         cfg = self.get_llm_config()
         return bool(cfg.get("enabled") and cfg.get("api_key"))
+
+    def get_vision_config(self) -> dict:
+        """获取视觉精排配置"""
+        cfg = self.get("vision", {}) or {}
+        return {
+            "enabled": bool(cfg.get("enabled", False)),
+            "provider_name": cfg.get("provider_name", "智谱 GLM-4V-Flash (免费)"),
+            "base_url": cfg.get("base_url", "https://open.bigmodel.cn/api/paas/v4"),
+            "api_key": cfg.get("api_key", ""),
+            "model": cfg.get("model", "glm-4v-flash"),
+        }
+
+    def set_vision_config(
+        self,
+        enabled: bool,
+        provider_name: str,
+        base_url: str,
+        api_key: str,
+        model: str,
+    ) -> None:
+        """设置视觉精排配置"""
+        self.set("vision.enabled", enabled)
+        self.set("vision.provider_name", provider_name)
+        self.set("vision.base_url", base_url)
+        self.set("vision.api_key", api_key)
+        self.set("vision.model", model)
+
+    def get_ai_provider_config(self) -> dict:
+        """获取 AI 文生图提供商配置"""
+        cfg = self.get("ai_providers", {}) or {}
+        defaults = self._defaults.get("ai_providers", {})
+        return {
+            "active": cfg.get("active", defaults.get("active", "pollinations")),
+            "pollinations": {**defaults.get("pollinations", {}), **cfg.get("pollinations", {})},
+            "doubao": {**defaults.get("doubao", {}), **cfg.get("doubao", {})},
+        }
 
     # ===== 内部工具方法 =====
 

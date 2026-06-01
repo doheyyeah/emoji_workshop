@@ -87,8 +87,8 @@ class VisionService:
         # 按编号顺序返回对应图片
         return [indexed[i] for i in ranked_ids if i in indexed]
 
-    def test_connection(self) -> bool:
-        """发送极小测试图验证连接，返回是否成功"""
+    def test_connection(self) -> tuple[bool, str]:
+        """发送极小测试图验证连接，返回 (是否成功, 错误信息)"""
         img = Image.new("RGB", (8, 8), color=(128, 128, 128))
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
@@ -105,9 +105,9 @@ class VisionService:
         ]
         try:
             self._chat(messages, timeout=15)
-            return True
-        except Exception:
-            return False
+            return True, ""
+        except Exception as exc:
+            return False, str(exc)
 
     # ------------------------------------------------------------------
     # 私有辅助

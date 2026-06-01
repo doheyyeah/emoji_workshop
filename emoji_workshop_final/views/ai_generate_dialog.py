@@ -310,6 +310,7 @@ class AIGenerateDialog(QDialog):
                 self.provider_combo.setCurrentIndex(i)
                 break
         ai_cfg = self.config.get_ai_provider_config()
+        # 优先读新路径 ai_providers.doubao.api_key；兼容旧路径 ai.doubao_api_key（向后兼容旧配置文件）
         self.apikey_edit.setText(ai_cfg["doubao"].get("api_key") or self.config.get("ai.doubao_api_key", ""))
 
     def _start_generation(self):

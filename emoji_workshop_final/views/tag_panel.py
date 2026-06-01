@@ -260,8 +260,8 @@ class TagPanel(QWidget):
         for tag_name in selected_names:
             for image_id in ids:
                 self.db.add_tag_to_image(image_id, tag_name)
-            tag_name_for_msg = selected_names[0] if len(selected_names) == 1 else "、".join(selected_names)
 
+        tag_name_for_msg = selected_names[0] if len(selected_names) == 1 else "、".join(selected_names)
         self.tag_input.clear()
         self.load_tags()
 
@@ -270,7 +270,7 @@ class TagPanel(QWidget):
         self.tags_updated.emit()
         QMessageBox.information(
             self, "完成",
-            f"已给 {len(ids)} 张图片打标签『{selected_names[0] if len(selected_names) == 1 else '、'.join(selected_names)}』"
+            f"已给 {len(ids)} 张图片打标签『{tag_name_for_msg}』"
         )
 
     def _refresh_selection_from_current_images(self):

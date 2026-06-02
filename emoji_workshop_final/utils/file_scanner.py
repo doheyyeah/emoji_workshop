@@ -1,4 +1,5 @@
 import os
+import logging
 from pathlib import Path
 from typing import List, Tuple
 from PIL import Image
@@ -6,8 +7,24 @@ from PIL import Image
 
 class FileScanner:
     """文件夹扫描器，提取图片信息"""
-    
+
     SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+    EXCLUDE_DIRS = {
+        "venv", ".venv", "env", "__pycache__", ".git",
+        "site-packages", "node_modules", ".idea", ".vscode",
+        "dist", "build", ".pytest_cache",
+    }
+
+    @classmethod
+    def scan_directory(cls, root_path: str) -> list[str]:
+        """扫描目录并返回图片文件路径列表（跳过无关目录）"""
+        results: list[str] = []
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            dirnames[:] = [d for d in dirnames if d not in cls.EXCLUDE_DIRS]
+            for filename in filenames:
+                if Path(filename).suffix.lower() in cls.SUPPORTED_FORMATS:
+                    results.append(str(Path(dirpath) / filename))
+        return results
     
     @classmethod
     def scan_folder(cls, folder_path: str) -> List[dict]:
@@ -21,25 +38,24 @@ class FileScanner:
         if not folder.exists():
             return results
         
-        # 递归遍历
-        for file_path in folder.rglob('*'):
-            if file_path.is_file() and file_path.suffix.lower() in cls.SUPPORTED_FORMATS:
-                try:
-                    # 获取图片尺寸
-                    with Image.open(file_path) as img:
-                        width, height = img.size
-                    
-                    info = {
-                        'file_path': str(file_path.absolute()),
-                        'name': file_path.stem,
-                        'file_type': file_path.suffix.lower().replace('.', ''),
-                        'file_size': file_path.stat().st_size,
-                        'width': width,
-                        'height': height
-                    }
-                    results.append(info)
-                except Exception as e:
-                    print(f"无法读取图片 {file_path}: {e}")
+        for file_path_str in cls.scan_directory(str(folder)):
+            file_path = Path(file_path_str)
+            try:
+                # 获取图片尺寸
+                with Image.open(file_path) as img:
+                    width, height = img.size
+
+                info = {
+                    'file_path': str(file_path.absolute()),
+                    'name': file_path.stem,
+                    'file_type': file_path.suffix.lower().replace('.', ''),
+                    'file_size': file_path.stat().st_size,
+                    'width': width,
+                    'height': height
+                }
+                results.append(info)
+            except Exception as e:
+                logging.debug("无法读取图片 %s: %s", file_path, e)
         
         return results
     

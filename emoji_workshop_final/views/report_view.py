@@ -37,6 +37,7 @@ class ReportDialog(QDialog):
         super().__init__(parent)
         self.db = db_service
         self.controller = ReportController(db_service)
+        self.setObjectName("reportDialog")
 
         self.setWindowTitle("📝 性格画像报告")
         self.setMinimumSize(600, 500)
@@ -57,7 +58,7 @@ class ReportDialog(QDialog):
         stats_rule_label = QLabel(
             "📊 统计规则：每次双击图片（自动复制到剪贴板）记为 1 次使用"
         )
-        stats_rule_label.setStyleSheet("color: #888; font-size: 11px; padding: 2px 4px;")
+        stats_rule_label.setObjectName("statsRuleLabel")
         layout.addWidget(stats_rule_label)
 
         # --- 顶部工具栏 ---
@@ -139,32 +140,4 @@ class ReportDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _apply_dark_style(self) -> None:
-        self.setStyleSheet("""
-            QDialog { background-color: #1e1e1e; color: #e0e0e0; }
-            QWidget { background-color: #1e1e1e; color: #e0e0e0; }
-            QTextBrowser {
-                background-color: #252526;
-                color: #e0e0e0;
-                border: 1px solid #3e3e42;
-                border-radius: 4px;
-                padding: 8px;
-                font-size: 13px;
-            }
-            QPushButton {
-                background-color: #0d7377;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #14919b; }
-            QComboBox {
-                background-color: #252526;
-                color: #e0e0e0;
-                border: 1px solid #3e3e42;
-                padding: 4px 8px;
-                border-radius: 4px;
-            }
-            QComboBox::drop-down { border: none; }
-            QLabel { color: #e0e0e0; }
-        """)
+        """样式由全局 QSS 控制"""

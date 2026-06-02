@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -69,12 +70,23 @@ class ConfigManager:
             },
             "ai_providers": {
                 "active": "doubao",
-                "pollinations": {"enabled": True},
+                "pollinations": {
+                    "enabled": True,
+                    "api_key": "",
+                    "model": "",
+                    "base_url": "",
+                },
                 "doubao": {
                     "enabled": False,
                     "api_key": "",
                     "model": "doubao-seedream-5-0-260128"
-                }
+                },
+                "custom": {
+                    "enabled": False,
+                    "api_key": "",
+                    "model": "",
+                    "base_url": "",
+                },
             },
             "vision": {
                 "enabled": False,
@@ -111,7 +123,7 @@ class ConfigManager:
                     loaded = json.load(f)
                 self._deep_merge(self._config, loaded)
             except (json.JSONDecodeError, IOError) as e:
-                print(f"[ConfigManager] 配置加载失败，使用默认配置: {e}")
+                logging.debug("[ConfigManager] 配置加载失败，使用默认配置: %s", e)
 
     def save(self) -> bool:
         """保存配置到文件"""
@@ -120,7 +132,7 @@ class ConfigManager:
                 json.dump(self._config, f, ensure_ascii=False, indent=2)
             return True
         except IOError as e:
-            print(f"[ConfigManager] 配置保存失败: {e}")
+            logging.debug("[ConfigManager] 配置保存失败: %s", e)
             return False
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -250,15 +262,36 @@ class ConfigManager:
         self.set("vision.api_key", api_key)
         self.set("vision.model", model)
 
-    def get_ai_provider_config(self) -> dict:
-        """获取 AI 文生图提供商配置"""
+    def get_ai_provider_config(self, name: str | None = None) -> dict:
+        """获取 AI 文生图提供商配置（兼容旧配置）"""
         cfg = self.get("ai_providers", {}) or {}
         defaults = self._defaults.get("ai_providers", {})
-        return {
+        merged = {
             "active": cfg.get("active", defaults.get("active", "pollinations")),
             "pollinations": {**defaults.get("pollinations", {}), **cfg.get("pollinations", {})},
             "doubao": {**defaults.get("doubao", {}), **cfg.get("doubao", {})},
+            "custom": {**defaults.get("custom", {}), **cfg.get("custom", {})},
         }
+        # 向后兼容旧字段
+        merged["doubao"]["api_key"] = (
+            merged["doubao"].get("api_key") or self.get("ai.doubao_api_key", "")
+        )
+        if name:
+            return dict(merged.get(name, {}))
+        return merged
+
+    def set_ai_provider_config(self, name: str, **kwargs) -> None:
+        """设置指定 AI 提供商配置"""
+        allowed = {"api_key", "model", "base_url", "enabled"}
+        current = self.get_ai_provider_config(name)
+        updated = dict(current)
+        for key, value in kwargs.items():
+            if key in allowed:
+                updated[key] = value
+        self.set(f"ai_providers.{name}", updated)
+        if name == "doubao" and "api_key" in kwargs:
+            # 兼容旧路径
+            self.set("ai.doubao_api_key", kwargs.get("api_key", ""))
 
     # ===== 内部工具方法 =====
 

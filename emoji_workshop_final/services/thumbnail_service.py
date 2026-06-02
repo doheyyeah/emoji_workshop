@@ -1,5 +1,6 @@
 import os
 import hashlib
+import logging
 from pathlib import Path
 from typing import Optional
 from PIL import Image
@@ -52,9 +53,17 @@ class ThumbnailService:
         """用 Pillow 生成缩略图"""
         try:
             with Image.open(src_path) as img:
-                # 转换为 RGB（处理 PNG 透明通道等）
-                if img.mode in ('RGBA', 'P'):
-                    img = img.convert('RGB')
+                # JPEG 不支持透明通道，先安全转为 RGB
+                if img.mode in ("RGBA", "LA", "P", "PA"):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode in ("RGBA", "LA"):
+                        bg.paste(img, mask=img.split()[-1])
+                    else:
+                        rgba = img.convert("RGBA")
+                        bg.paste(rgba, mask=rgba.split()[-1])
+                    img = bg
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
                 
                 # 等比例缩放
                 img.thumbnail((self.THUMB_SIZE, self.THUMB_SIZE), Image.Resampling.LANCZOS)
@@ -64,7 +73,7 @@ class ThumbnailService:
                 
                 return str(dst_path)
         except Exception as e:
-            print(f"缩略图生成失败 {src_path}: {e}")
+            logging.error("缩略图生成失败 %s: %s", src_path, e)
             return None
     
     def clear_cache(self):

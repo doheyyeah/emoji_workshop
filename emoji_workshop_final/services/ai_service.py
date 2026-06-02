@@ -1,11 +1,10 @@
-import base64
+import logging
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
 
-import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from services.providers.custom_provider import CustomProvider
 from services.providers.doubao_provider import DoubaoProvider
 from services.providers.pollinations_provider import PollinationsProvider
 from utils.config_manager import ConfigManager
@@ -45,7 +44,7 @@ class AIGenerateWorker(QThread):
                 f.write(content)
             self.finished.emit(self.save_path)
         except Exception as exc:
-            print(f"[AIService] 生成失败: {exc}")
+            logging.debug("[AIService] 生成失败: %s", exc)
             self.error.emit("生成失败,请检查 API Key 或更换提供商")
 
 
@@ -54,26 +53,19 @@ class AIService:
 
     # 已注册的提供商
     PROVIDERS = {
-        "pollinations": PollinationsProvider(),
-        "doubao": DoubaoProvider(),
+        "pollinations": PollinationsProvider,
+        "doubao": DoubaoProvider,
+        "custom": CustomProvider,
     }
 
     def __init__(self):
         self.config = ConfigManager()
         self._active_workers: list[AIGenerateWorker] = []
-        self.providers = self.PROVIDERS
+        self.providers = {name: provider_cls() for name, provider_cls in self.PROVIDERS.items()}
 
     def get_enabled_providers(self) -> list[str]:
-        """返回当前已启用的提供商 key 列表（pollinations 始终保留）"""
-        ai_cfg = self.config.get_ai_provider_config()
-        enabled = []
-        # 豆包（需要 api_key）
-        doubao_cfg = ai_cfg.get("doubao", {})
-        if doubao_cfg.get("enabled") or doubao_cfg.get("api_key"):
-            enabled.append("doubao")
-        # Pollinations 始终可用
-        enabled.append("pollinations")
-        return enabled
+        """返回所有可选提供商 key 列表"""
+        return list(self.PROVIDERS.keys())
 
     def generate_image(
         self,
@@ -91,10 +83,12 @@ class AIService:
         provider_obj = self.providers.get(provider_key, self.providers["pollinations"])
 
         worker_kwargs = dict(kwargs)
-        if provider_key == "doubao":
-            ai_cfg = self.config.get_ai_provider_config()
-            worker_kwargs["api_key"] = ai_cfg["doubao"].get("api_key") or self.config.get("ai.doubao_api_key", "")
-            worker_kwargs["model"] = ai_cfg["doubao"].get("model", "doubao-seedream-5-0-260128")
+        cfg = self.config.get_ai_provider_config(provider_key)
+        if provider_key in ("doubao", "custom"):
+            worker_kwargs["api_key"] = worker_kwargs.get("api_key") or cfg.get("api_key", "")
+            worker_kwargs["model"] = worker_kwargs.get("model") or cfg.get("model", "")
+        if provider_key == "custom":
+            worker_kwargs["base_url"] = worker_kwargs.get("base_url") or cfg.get("base_url", "")
 
         worker = AIGenerateWorker(provider_obj, prompt, save_path, width, height, **worker_kwargs)
 

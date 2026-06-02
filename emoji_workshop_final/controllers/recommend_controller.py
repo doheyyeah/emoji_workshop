@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from models.image_model import ImageModel
 from services.database_service import DatabaseService
 from services.llm_service import LLMService
@@ -26,7 +28,7 @@ class RecommendController:
     def recommend(self, context: str, top_k: int = 3) -> list[ImageModel]:
         """两阶段智能推荐
 
-        阶段 1: 文本 LLM 选标签 → 候选集（top_k * 5）
+        阶段 1: 文本 LLM 选标签 → 候选集（top_k * 3）
         阶段 2（可选）: 视觉精排 → top_k
 
         视觉未启用：只走文本 LLM
@@ -57,8 +59,8 @@ class RecommendController:
         if not recommended_tags:
             raise RuntimeError("LLM 未返回任何推荐标签")
 
-        # 阶段 1：文本 LLM 召回候选集（top_k * 5，最多 15 张）
-        candidate_count = min(top_k * 5, 15)
+        # 阶段 1：文本 LLM 召回候选集（top_k * 3，最多 9 张）
+        candidate_count = min(top_k * 3, 9)
         rows = self.db_service.get_images_by_tags_union(recommended_tags)[:candidate_count]
         candidates = [self._row_to_dict(row) for row in rows]
 
@@ -79,7 +81,7 @@ class RecommendController:
                 if reranked:
                     return [ImageModel.from_db_row(self._dict_to_row(r)) for r in reranked]
             except Exception as exc:
-                print(f"[RecommendController] 视觉精排失败，降级到文本 LLM 结果: {exc}")
+                logging.debug("[RecommendController] 视觉精排失败，降级到文本 LLM 结果: %s", exc)
 
         # 降级：直接用文本 LLM 候选的前 top_k 个
         return [ImageModel.from_db_row(self._dict_to_row(r)) for r in candidates[:top_k]]

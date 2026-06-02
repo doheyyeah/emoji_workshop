@@ -84,7 +84,6 @@ class AIGenerateDialog(QDialog):
             "pollinations": "Pollinations (免费)",
             "custom": "🛠 自定义",
         }
-        self.provider_reverse_map = {v: k for k, v in self.provider_display_map.items()}
         settings_layout.addRow("AI 提供商:", self.provider_combo)
 
         self.apikey_edit = QLineEdit()

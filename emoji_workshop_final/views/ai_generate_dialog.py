@@ -82,12 +82,19 @@ class AIGenerateDialog(QDialog):
         self.provider_display_map = {
             "doubao": "豆包 Seedream 5.0 Lite",
             "pollinations": "Pollinations (免费)",
+            "custom": "🛠 自定义",
         }
         settings_layout.addRow("AI 提供商:", self.provider_combo)
 
         self.apikey_edit = QLineEdit()
         self.apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
         settings_layout.addRow("API Key:", self.apikey_edit)
+
+        self.base_url_edit = QLineEdit()
+        settings_layout.addRow("Base URL:", self.base_url_edit)
+
+        self.model_edit = QLineEdit()
+        settings_layout.addRow("Model:", self.model_edit)
 
         size_layout = QHBoxLayout()
         self.width_spin = QSpinBox()
@@ -108,6 +115,7 @@ class AIGenerateDialog(QDialog):
         self.save_edit = QLineEdit()
         self.save_edit.setReadOnly(True)
         self.browse_btn = QPushButton("浏览...")
+        self.browse_btn.setObjectName("secondaryButton")
         self.browse_btn.clicked.connect(self._browse_folder)
         save_layout.addWidget(self.save_edit)
         save_layout.addWidget(self.browse_btn)
@@ -118,8 +126,10 @@ class AIGenerateDialog(QDialog):
 
         btn_row = QHBoxLayout()
         self.generate_btn = QPushButton("🎨 开始生成")
+        self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.clicked.connect(self._start_generation)
         self.stop_btn = QPushButton("⏹ 停止生成")
+        self.stop_btn.setObjectName("secondaryButton")
         self.stop_btn.clicked.connect(self._stop_generation)
         self.stop_btn.setVisible(False)
         btn_row.addWidget(self.generate_btn)
@@ -141,6 +151,7 @@ class AIGenerateDialog(QDialog):
         preview_layout.addWidget(self.preview_label)
 
         self.import_btn = QPushButton("➕ 导入到图片库")
+        self.import_btn.setObjectName("primaryButton")
         self.import_btn.setEnabled(False)
         self.import_btn.clicked.connect(self._import_generated)
         preview_layout.addWidget(self.import_btn)
@@ -206,6 +217,7 @@ class AIGenerateDialog(QDialog):
         a_layout.addWidget(a_group)
 
         self.gif_generate_btn = QPushButton("🎞 生成动图")
+        self.gif_generate_btn.setObjectName("primaryButton")
         self.gif_generate_btn.clicked.connect(self._generate_gif_mode_a)
         a_layout.addWidget(self.gif_generate_btn)
 
@@ -218,6 +230,7 @@ class AIGenerateDialog(QDialog):
         a_layout.addWidget(self.gif_preview)
 
         self.gif_save_btn = QPushButton("➕ 保存到库")
+        self.gif_save_btn.setObjectName("primaryButton")
         self.gif_save_btn.setEnabled(False)
         self.gif_save_btn.clicked.connect(self._import_generated_gif)
         a_layout.addWidget(self.gif_save_btn)
@@ -255,6 +268,7 @@ class AIGenerateDialog(QDialog):
         b_layout.addLayout(b_form)
 
         self.gif_b_generate_btn = QPushButton("🎞 生成多帧 GIF")
+        self.gif_b_generate_btn.setObjectName("primaryButton")
         self.gif_b_generate_btn.clicked.connect(self._generate_gif_mode_b)
         b_layout.addWidget(self.gif_b_generate_btn)
 
@@ -267,6 +281,7 @@ class AIGenerateDialog(QDialog):
         b_layout.addWidget(self.gif_b_preview)
 
         self.gif_b_save_btn = QPushButton("➕ 保存到库")
+        self.gif_b_save_btn.setObjectName("primaryButton")
         self.gif_b_save_btn.setEnabled(False)
         self.gif_b_save_btn.clicked.connect(self._import_generated_gif_b)
         b_layout.addWidget(self.gif_b_save_btn)
@@ -304,14 +319,54 @@ class AIGenerateDialog(QDialog):
         self.provider_combo.clear()
         for key in enabled_keys:
             self.provider_combo.addItem(self.provider_display_map.get(key, key), userData=key)
-        preferred = self.config.get("ai.provider", "doubao")
+        preferred = self.config.get("ai_providers.active", self.config.get("ai.provider", "doubao"))
         for i in range(self.provider_combo.count()):
             if self.provider_combo.itemData(i) == preferred:
                 self.provider_combo.setCurrentIndex(i)
                 break
-        ai_cfg = self.config.get_ai_provider_config()
-        # 优先读新路径 ai_providers.doubao.api_key；兼容旧路径 ai.doubao_api_key（向后兼容旧配置文件）
-        self.apikey_edit.setText(ai_cfg["doubao"].get("api_key") or self.config.get("ai.doubao_api_key", ""))
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+        self.apikey_edit.textChanged.connect(self._on_provider_field_changed)
+        self.base_url_edit.textChanged.connect(self._on_provider_field_changed)
+        self.model_edit.textChanged.connect(self._on_provider_field_changed)
+        self._on_provider_changed()
+
+    def _current_provider(self) -> str:
+        return self.provider_combo.currentData() or "pollinations"
+
+    def _on_provider_changed(self):
+        provider = self._current_provider()
+        cfg = self.config.get_ai_provider_config(provider)
+        self.apikey_edit.blockSignals(True)
+        self.base_url_edit.blockSignals(True)
+        self.model_edit.blockSignals(True)
+        self.apikey_edit.setText(cfg.get("api_key", ""))
+        self.base_url_edit.setText(cfg.get("base_url", ""))
+        self.model_edit.setText(cfg.get("model", ""))
+        self.apikey_edit.blockSignals(False)
+        self.base_url_edit.blockSignals(False)
+        self.model_edit.blockSignals(False)
+
+        is_pollinations = provider == "pollinations"
+        self.apikey_edit.setEnabled(not is_pollinations)
+        self.model_edit.setEnabled(not is_pollinations)
+        self.base_url_edit.setEnabled(provider == "custom")
+        if is_pollinations:
+            self.apikey_edit.setPlaceholderText("免费,无需 Key")
+        elif provider == "doubao":
+            self.apikey_edit.setPlaceholderText("请输入豆包 API Key")
+        else:
+            self.apikey_edit.setPlaceholderText("请输入 API Key")
+
+    def _on_provider_field_changed(self):
+        provider = self._current_provider()
+        self.config.set_ai_provider_config(
+            provider,
+            api_key=self.apikey_edit.text().strip(),
+            model=self.model_edit.text().strip(),
+            base_url=self.base_url_edit.text().strip(),
+            enabled=True,
+        )
+        self.config.set("ai_providers.active", provider)
 
     def _start_generation(self):
         prompt = self.prompt_edit.toPlainText().strip()
@@ -328,12 +383,10 @@ class AIGenerateDialog(QDialog):
         filename = f"ai_{hashlib.md5(f'{prompt}:{time.time()}'.encode()).hexdigest()[:8]}.png"
         save_path = str(Path(save_dir) / filename)
         provider = self.provider_combo.currentData()
-        if provider == "doubao":
-            api_key = self.apikey_edit.text().strip()
-            self.config.set("ai.doubao_api_key", api_key)
-            self.config.set("ai_providers.doubao.api_key", api_key)
-            self.config.set("ai_providers.doubao.enabled", bool(api_key))
+        if provider != "pollinations":
+            self._on_provider_field_changed()
         self.config.set("ai.provider", provider)
+        self.config.set("ai_providers.active", provider)
 
         self.progress.setVisible(True)
         self.progress.setRange(0, 0)
@@ -350,6 +403,9 @@ class AIGenerateDialog(QDialog):
             width=self.width_spin.value(),
             height=self.height_spin.value(),
             provider=provider,
+            api_key=self.apikey_edit.text().strip(),
+            model=self.model_edit.text().strip(),
+            base_url=self.base_url_edit.text().strip(),
             progress_callback=self._on_progress,
             finished_callback=self._on_finished,
             error_callback=self._on_error,

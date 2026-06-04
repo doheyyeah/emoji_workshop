@@ -24,7 +24,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = ConfigManager()
         self.setWindowTitle("⚙️ 应用设置")
-        self.setMinimumSize(500, 450)
+        self.setMinimumSize(700, 550)
+        self.resize(800, 650)
         self._setup_ui()
         self._load_all_settings()
 
@@ -302,10 +303,12 @@ class SettingsDialog(QDialog):
         danger_layout = QVBoxLayout()
 
         reset_btn = QPushButton("🔄 重置所有配置为默认值")
+        reset_btn.setObjectName("dangerButton")
         reset_btn.clicked.connect(self._restore_defaults)
         danger_layout.addWidget(reset_btn)
 
         clear_cache_btn = QPushButton("🗑️ 清空缩略图缓存")
+        clear_cache_btn.setObjectName("dangerButton")
         clear_cache_btn.clicked.connect(self._clear_cache)
         danger_layout.addWidget(clear_cache_btn)
 

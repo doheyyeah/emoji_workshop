@@ -1,5 +1,6 @@
 import sys
 import time
+import logging
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -23,8 +24,14 @@ from views.report_view import ReportDialog
 from services.database_service import DatabaseService
 from services.clipboard_monitor import ClipboardMonitor
 from services.api_service import APIService
+from services.network_monitor import NetworkMonitor
 from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
+
+logging.basicConfig(
+    level=logging.WARNING,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 
 
 class MainWindow(QMainWindow):
@@ -40,6 +47,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = ConfigManager()
         self.config.increment_stat("launch_count")
+        self.setObjectName("mainWindow")
 
         self.setWindowTitle("表情工坊 - 智能管理系统")
         self.setMinimumSize(800, 600)
@@ -61,6 +69,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("就绪")
         self.status_tip_label = QLabel("💡 想从网页保存图片? 浏览器右键 → 图片另存为 → 然后拖入本程序")
         self.statusBar().addPermanentWidget(self.status_tip_label, 1)
+        self._setup_network_monitor()
 
     def _restore_window_state(self):
         """从配置恢复窗口位置和大小"""
@@ -137,6 +146,7 @@ class MainWindow(QMainWindow):
 
         # 画廊视图
         self.gallery = GalleryView(self.db_service)
+        self.gallery.setObjectName("galleryView")
         self.gallery.image_selected.connect(self.on_image_selected)
         self.gallery.images_selection_changed.connect(self.on_images_selection_changed)
         left_layout.addWidget(self.gallery)
@@ -156,11 +166,13 @@ class MainWindow(QMainWindow):
         right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.tag_panel = TagPanel(self.db_service)
+        self.tag_panel.setObjectName("tagPanel")
         self.tag_panel.filter_tags_changed.connect(self.on_filter_tags_changed)
         self.tag_panel.tags_updated.connect(self.on_tags_updated)
         right_splitter.addWidget(self.tag_panel)
 
         self.recommend_panel = RecommendPanel(self.db_service)
+        self.recommend_panel.setObjectName("recommendPanel")
         self.recommend_panel.image_selected.connect(self.on_image_selected)
         right_splitter.addWidget(self.recommend_panel)
 
@@ -178,205 +190,39 @@ class MainWindow(QMainWindow):
     def _apply_theme(self):
         """应用配置中的主题设置"""
         theme = self.config.get("ui.theme", "dark")
+        self.setProperty("theme", theme)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
-        if theme == "dark":
-            self.setStyleSheet("""
-                * {
-                    font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-                    font-size: 13px;
-                }
-                QMainWindow { background-color: #1e1e1e; }
-                QWidget { background-color: #1e1e1e; color: #e0e0e0; }
-                QPushButton {
-                    background-color: #4a9eff;
-                    color: white;
-                    border: none;
-                    padding: 8px 18px;
-                    border-radius: 8px;
-                }
-                QPushButton:hover { background-color: #6ab3ff; }
-                QPushButton:pressed { background-color: #3480d8; }
-                QPushButton:disabled { background-color: #555; color: #888; }
-                QListWidget {
-                    background-color: #252526;
-                    border: 1px solid #3e3e42;
-                    border-radius: 8px;
-                }
-                QListWidget::item:hover {
-                    background-color: #2e2e3a;
-                }
-                QListWidget::item:selected {
-                    background-color: #4a9eff;
-                    color: white;
-                }
-                QLabel { color: #e0e0e0; }
-                QLineEdit, QComboBox, QTextEdit {
-                    background-color: #252526;
-                    color: #e0e0e0;
-                    border: 1px solid #3e3e42;
-                    padding: 6px;
-                    border-radius: 8px;
-                }
-                QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
-                    border: 2px solid #4a9eff;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    padding-right: 6px;
-                }
-                QProgressBar {
-                    border: 1px solid #3e3e42;
-                    border-radius: 8px;
-                    text-align: center;
-                }
-                QProgressBar::chunk {
-                    background-color: #4a9eff;
-                    border-radius: 8px;
-                }
-                QMenuBar {
-                    background-color: #2d2d2d;
-                    color: #e0e0e0;
-                    border-bottom: 1px solid #3e3e42;
-                }
-                QMenuBar::item:selected {
-                    background-color: #4a9eff;
-                    border-radius: 4px;
-                }
-                QMenu {
-                    background-color: #2d2d2d;
-                    color: #e0e0e0;
-                    border: 1px solid #3e3e42;
-                    border-radius: 8px;
-                }
-                QMenu::item:selected {
-                    background-color: #4a9eff;
-                    border-radius: 4px;
-                }
-                QScrollBar:vertical {
-                    background: #252526;
-                    width: 8px;
-                    border-radius: 4px;
-                }
-                QScrollBar::handle:vertical {
-                    background: #555;
-                    border-radius: 4px;
-                    min-height: 20px;
-                }
-                QScrollBar::handle:vertical:hover { background: #4a9eff; }
-                QScrollBar:horizontal {
-                    background: #252526;
-                    height: 8px;
-                    border-radius: 4px;
-                }
-                QScrollBar::handle:horizontal {
-                    background: #555;
-                    border-radius: 4px;
-                    min-width: 20px;
-                }
-                QScrollBar::handle:horizontal:hover { background: #4a9eff; }
-                QGroupBox {
-                    border: 1px solid #3e3e42;
-                    border-radius: 8px;
-                    margin-top: 8px;
-                    padding-top: 8px;
-                }
-                QGroupBox::title {
-                    color: #4a9eff;
-                    subcontrol-origin: margin;
-                    left: 10px;
-                }
-                QTabWidget::pane {
-                    border: 1px solid #3e3e42;
-                    border-radius: 8px;
-                }
-                QTabBar::tab {
-                    background: #252526;
-                    color: #aaa;
-                    padding: 6px 14px;
-                    border-radius: 6px 6px 0 0;
-                }
-                QTabBar::tab:selected {
-                    background: #4a9eff;
-                    color: white;
-                }
-                QSplitter::handle { background: #3e3e42; }
-            """)
+    def _setup_network_monitor(self):
+        self.network_labels = {}
+        for key, display in (("kimi", "Kimi"), ("zhipu", "智谱"), ("doubao", "豆包")):
+            label = QLabel(f"⚪ {display} 未配置")
+            label.setObjectName("networkStatusLabel")
+            self.network_labels[key] = label
+            self.statusBar().addPermanentWidget(label)
+        self.network_monitor = NetworkMonitor(self.config)
+        self.network_monitor.status_changed.connect(self._update_network_status)
+        self.network_monitor.start()
+
+    def _update_network_status(self, provider_name: str, is_online: bool, latency_ms: int):
+        label = self.network_labels.get(provider_name)
+        if not label:
+            return
+        display = {"kimi": "Kimi", "zhipu": "智谱", "doubao": "豆包"}.get(provider_name, provider_name)
+        if latency_ms == -1:
+            label.setText(f"⚪ {display} 未配置")
+            label.setToolTip(f"{display}: 未配置 Key")
+            return
+        if is_online and latency_ms <= 2000:
+            label.setText(f"🟢 {display} {latency_ms}ms")
+            label.setToolTip(f"{display}: 在线，延迟 {latency_ms}ms")
+        elif is_online:
+            label.setText(f"🟡 {display} {latency_ms}ms")
+            label.setToolTip(f"{display}: 较慢，延迟 {latency_ms}ms")
         else:
-            self.setStyleSheet("""
-                * {
-                    font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-                    font-size: 13px;
-                }
-                QMainWindow { background-color: #f5f5f5; }
-                QWidget { background-color: #f5f5f5; color: #333; }
-                QPushButton {
-                    background-color: #5b8def;
-                    color: white;
-                    border: none;
-                    padding: 8px 18px;
-                    border-radius: 8px;
-                }
-                QPushButton:hover { background-color: #3a6ed4; }
-                QPushButton:pressed { background-color: #2a5ab8; }
-                QPushButton:disabled { background-color: #ccc; color: #888; }
-                QListWidget {
-                    background-color: white;
-                    border: 1px solid #ddd;
-                    border-radius: 8px;
-                }
-                QListWidget::item:hover { background-color: #eef2ff; }
-                QListWidget::item:selected {
-                    background-color: #5b8def;
-                    color: white;
-                }
-                QLabel { color: #333; }
-                QLineEdit, QComboBox, QTextEdit {
-                    background-color: white;
-                    color: #333;
-                    border: 1px solid #ddd;
-                    padding: 6px;
-                    border-radius: 8px;
-                }
-                QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
-                    border: 2px solid #5b8def;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    padding-right: 6px;
-                }
-                QProgressBar {
-                    border: 1px solid #ddd;
-                    border-radius: 8px;
-                    text-align: center;
-                }
-                QProgressBar::chunk {
-                    background-color: #5b8def;
-                    border-radius: 8px;
-                }
-                QScrollBar:vertical {
-                    background: #f0f0f0;
-                    width: 8px;
-                    border-radius: 4px;
-                }
-                QScrollBar::handle:vertical {
-                    background: #bbb;
-                    border-radius: 4px;
-                    min-height: 20px;
-                }
-                QScrollBar::handle:vertical:hover { background: #5b8def; }
-                QGroupBox {
-                    border: 1px solid #ddd;
-                    border-radius: 8px;
-                    margin-top: 8px;
-                    padding-top: 8px;
-                }
-                QGroupBox::title {
-                    color: #5b8def;
-                    subcontrol-origin: margin;
-                    left: 10px;
-                }
-                QSplitter::handle { background: #ddd; }
-            """)
+            label.setText(f"🔴 {display} 离线")
+            label.setToolTip(f"{display}: 离线")
 
     def _open_report_dialog(self):
         """打开性格画像报告对话框"""
@@ -466,12 +312,17 @@ class MainWindow(QMainWindow):
 
         self.config.save()
         self.api_service.cancel_all_downloads()
+        if hasattr(self, "network_monitor"):
+            self.network_monitor.stop()
         event.accept()
 
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
+    qss_path = Path(__file__).parent / "resources" / "style.qss"
+    if qss_path.exists():
+        app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
 
     window = MainWindow()
     window.show()

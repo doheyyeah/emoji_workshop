@@ -89,21 +89,23 @@ class StatsPanel(QWidget):
     def _make_card(self, title: str, value: str) -> QFrame:
         """创建统计数字卡片"""
         card = QFrame()
+        card.setObjectName("statsCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setStyleSheet("""
             QFrame {
                 background-color: #252526;
                 border-radius: 12px;
-                padding: 8px;
+                padding: 16px;
             }
         """)
+        card.setMinimumHeight(120)
         v = QVBoxLayout(card)
-        v.setContentsMargins(12, 10, 12, 10)
+        v.setContentsMargins(16, 16, 16, 16)
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("color: #aaa; font-size: 12px;")
+        title_lbl.setStyleSheet("color: #aaa; font-size: 14px;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         value_lbl = QLabel(value)
-        value_lbl.setStyleSheet("color: #4a9eff; font-size: 28px; font-weight: bold;")
+        value_lbl.setStyleSheet("color: #4a9eff; font-size: 36px; font-weight: bold;")
         value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(title_lbl)
         v.addWidget(value_lbl)
@@ -152,7 +154,7 @@ class StatsPanel(QWidget):
         self.trend_figure.clear()
         ax = self.trend_figure.add_subplot(111)
         ax.set_facecolor('#1e1e1e')
-        ax.tick_params(colors='white', labelsize=9)
+        ax.tick_params(colors='white', labelsize=8)
         ax.xaxis.label.set_color('white')
         ax.yaxis.label.set_color('white')
 
@@ -181,9 +183,10 @@ class StatsPanel(QWidget):
         ax.plot(dates, values, marker='o', color='#4a9eff', linewidth=2, markersize=5)
         ax.fill_between(dates, values, alpha=0.2, color='#4a9eff')
         ax.set_title("最近 7 天使用趋势", color='white', fontsize=11)
+        ax.set_xticks(dates)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')
-        self.trend_figure.tight_layout()
+        self.trend_figure.subplots_adjust(left=0.08, right=0.97, top=0.88, bottom=0.18)
         self.trend_canvas.draw()
 
     def _refresh_hourly(self):
@@ -211,7 +214,7 @@ class StatsPanel(QWidget):
         ax.set_xticklabels([f"{h}时" for h in range(0, 24, 3)], color='white', fontsize=8)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')
-        self.hour_figure.tight_layout()
+        self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.88, bottom=0.18)
         self.hour_canvas.draw()
 
     def _refresh_top10(self):

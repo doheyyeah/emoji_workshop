@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 import re
 from pathlib import Path
 
@@ -33,7 +34,7 @@ class VisionService:
         },
     }
 
-    MAX_IMAGES = 15  # 单次请求最多发送图片数，控制请求大小
+    MAX_IMAGES = 5  # 单次请求最多发送图片数，避免请求过大与兼容性问题
 
     def __init__(self, base_url: str, api_key: str, model: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -49,6 +50,7 @@ class VisionService:
         context: str,
         candidate_images: list[dict],
         top_k: int = 3,
+        timeout: int = 60,
     ) -> list[dict]:
         """视觉精排：从候选图中选出最匹配的 top_k 张
 
@@ -71,14 +73,13 @@ class VisionService:
         if not candidates:
             return []
 
-        # 构造编号 → 图片映射
-        indexed = {i + 1: img for i, img in enumerate(candidates)}
-
-        # 构造多模态消息
-        messages = self._build_messages(context, indexed)
+        # 构造多 message（每条 message 仅含 1 张图）
+        messages, indexed = self._build_messages(context, candidates, top_k)
+        if not indexed:
+            return []
 
         # 调用 API
-        response_text = self._chat(messages)
+        response_text = self._chat(messages, timeout=timeout)
 
         # 解析返回的编号列表（格式如 "3,7,1"）
         ranked_ids = self._parse_ranking(response_text, list(indexed.keys()))
@@ -113,33 +114,49 @@ class VisionService:
     # 私有辅助
     # ------------------------------------------------------------------
 
-    def _build_messages(self, context: str, indexed: dict[int, dict]) -> list[dict]:
-        """构造多模态消息列表"""
-        content = [
+    def _build_messages(
+        self, context: str, candidates: list[dict], top_k: int
+    ) -> tuple[list[dict], dict[int, dict]]:
+        """构造多模态消息列表（每条 message 仅一张图）"""
+        messages: list[dict] = []
+        indexed: dict[int, dict] = {}
+
+        for img_info in candidates:
+            file_path = img_info.get("file_path") or img_info.get("path")
+            if not file_path:
+                continue
+            data_url = self._image_to_data_url(file_path)
+            if not data_url:
+                continue
+            idx = len(indexed) + 1
+            indexed[idx] = img_info
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"图片 {idx}:"},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                }
+            )
+
+        messages.append(
             {
-                "type": "text",
-                "text": (
-                    f"用户在聊天中说：\"{context}\"\n\n"
-                    f"以下是 {len(indexed)} 张候选表情包图片（按编号展示），"
-                    "请选出最适合作为回复的图片编号。\n"
-                    "只返回编号，格式如 \"3,1,7\"，不要解释，不要其他内容。"
-                ),
-            }
-        ]
-
-        for idx, img_info in indexed.items():
-            data_url = self._image_to_data_url(img_info["file_path"])
-            if data_url:
-                content.append(
+                "role": "user",
+                "content": [
                     {
-                        "type": "image_url",
-                        "image_url": {"url": data_url},
+                        "type": "text",
+                        "text": (
+                            f"用户在聊天中说:\"{context}\"\n\n"
+                            f"上面给你 {len(messages)} 张候选表情包(编号 1 到 {len(messages)}),"
+                            f"请挑出最适合作为回应的 {top_k} 个,按合适程度降序。\n\n"
+                            "严格只返回编号,用英文逗号分隔,不要任何其他文字。\n例如:3,1,2"
+                        ),
                     }
-                )
-                # 在图片后附加编号说明
-                content.append({"type": "text", "text": f"（上图编号：{idx}）"})
-
-        return [{"role": "user", "content": content}]
+                ],
+            }
+        )
+        return messages, indexed
 
     def _image_to_data_url(self, file_path: str) -> str | None:
         """将图片压缩到 256px 并转为 JPEG base64 data URL"""
@@ -152,7 +169,7 @@ class VisionService:
                 b64 = base64.b64encode(buf.getvalue()).decode()
                 return f"data:image/jpeg;base64,{b64}"
         except Exception as exc:
-            print(f"[VisionService] 图片转换失败 {file_path}: {exc}")
+            logging.debug("[VisionService] 图片转换失败 %s: %s", file_path, exc)
             return None
 
     def _chat(self, messages: list[dict], timeout: int = 60) -> str:

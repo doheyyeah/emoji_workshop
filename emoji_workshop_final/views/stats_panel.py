@@ -5,9 +5,9 @@ from collections import defaultdict
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QFrame
+    QListWidgetItem, QFrame, QScrollArea, QPushButton, QSizePolicy
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QFontMetrics
 
 # Matplotlib 嵌入 PyQt6
@@ -27,11 +27,12 @@ class StatsPanel(QWidget):
     """数据统计面板：核心指标 + 趋势图 + 时段分布 + Top10
 
     保留指标：
-    - 总图片数 / 总标签数 / 总使用次数（三张卡片）
+    - 总图片数 / 总标签数 / 总使用次数（紧凑小卡片，占幅较小）
     - 每日使用趋势折线图（最近7天）
-    - 使用时段分布图（24小时柱状图）
+    - 使用时段分布图（最近24小时滚动窗口）
     - 最常用 Top10 表情（列表 + 缩略图）
 
+    整个面板内容包裹在可滚动区域中，保证图表标题不被裁剪、可拖拽查看。
     时间统一使用本地时间，精确到分钟。
     """
 
@@ -40,19 +41,42 @@ class StatsPanel(QWidget):
         self.db = db_service
         self.config = ConfigManager()
         self.thumb_service = None  # 延迟导入避免循环
+        # 记录最近一次刷新「最近7天趋势」时所属的日期，用于跨天（24:00）时同步刷新
+        self._last_trend_date = datetime.now().date()
         self.setup_ui()
         self.refresh_stats()
 
     def setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
 
-        # === 顶部标题 ===
+        # === 顶部标题 + 刷新按钮 ===
+        header_layout = QHBoxLayout()
         title_label = QLabel("📊 数据统计")
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 4px 0;")
-        layout.addWidget(title_label)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        self.refresh_button = QPushButton("🔄 刷新")
+        self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
+        self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refresh_button.clicked.connect(self.on_refresh_clicked)
+        header_layout.addWidget(self.refresh_button)
+        outer_layout.addLayout(header_layout)
 
-        # === 三个核心数字卡片 ===
+        # === 可滚动内容区域（保证图表始终可查看、标题不被裁剪）===
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        outer_layout.addWidget(self.scroll_area)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(2, 2, 2, 2)
+
+        # === 三个核心数字卡片（紧凑、占幅小）===
         cards_layout = QHBoxLayout()
+        cards_layout.setSpacing(6)
         self.card_images = self._make_card("总图片数", "0")
         self.card_tags = self._make_card("总标签数", "0")
         self.card_usage = self._make_card("总使用次数", "0")
@@ -62,23 +86,25 @@ class StatsPanel(QWidget):
         layout.addLayout(cards_layout)
 
         # === 每日使用趋势（最近7天）===
-        self.trend_figure = Figure(figsize=(7, 2.5), dpi=90)
+        layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
+        self.trend_figure = Figure(figsize=(7, 2.8), dpi=90)
         self.trend_figure.patch.set_facecolor('#1e1e1e')
         self.trend_canvas = FigureCanvas(self.trend_figure)
-        layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
+        self.trend_canvas.setMinimumHeight(200)
         layout.addWidget(self.trend_canvas)
 
-        # === 时段分布图（24小时）===
-        self.hour_figure = Figure(figsize=(7, 2.5), dpi=90)
+        # === 时段分布图（最近24小时）===
+        layout.addWidget(QLabel("⏰ 使用时段分布（最近 24 小时）"))
+        self.hour_figure = Figure(figsize=(7, 2.8), dpi=90)
         self.hour_figure.patch.set_facecolor('#1e1e1e')
         self.hour_canvas = FigureCanvas(self.hour_figure)
-        layout.addWidget(QLabel("⏰ 使用时段分布（24小时）"))
+        self.hour_canvas.setMinimumHeight(200)
         layout.addWidget(self.hour_canvas)
 
         # === 最常用 Top10 ===
         layout.addWidget(QLabel("🏆 最常用 Top 10 表情"))
         self.top10_list = QListWidget()
-        self.top10_list.setMaximumHeight(180)
+        self.top10_list.setMinimumHeight(220)
         layout.addWidget(self.top10_list)
 
         # === 最近刷新时间 ===
@@ -86,34 +112,51 @@ class StatsPanel(QWidget):
         self.refresh_label.setStyleSheet("color: #666; font-size: 11px;")
         layout.addWidget(self.refresh_label)
 
+        layout.addStretch()
+        self.scroll_area.setWidget(content)
+
     def _make_card(self, title: str, value: str) -> QFrame:
-        """创建统计数字卡片"""
+        """创建紧凑统计数字卡片（占幅较小）"""
         card = QFrame()
         card.setObjectName("statsCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setStyleSheet("""
             QFrame {
                 background-color: #252526;
-                border-radius: 12px;
-                padding: 16px;
+                border-radius: 8px;
+                padding: 6px;
             }
         """)
-        card.setMinimumHeight(120)
+        card.setMinimumHeight(56)
+        card.setMaximumHeight(72)
+        card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         v = QVBoxLayout(card)
-        v.setContentsMargins(16, 16, 16, 16)
-        title_lbl = AutoFitLabel(title, min_size=10, max_size=14)
+        v.setContentsMargins(8, 6, 8, 6)
+        v.setSpacing(2)
+        title_lbl = AutoFitLabel(title, min_size=9, max_size=12)
         title_lbl.setWordWrap(True)
         title_lbl.setStyleSheet("color: #aaa;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_lbl = AutoFitLabel(value, min_size=14, max_size=36)
+        value_lbl = AutoFitLabel(value, min_size=12, max_size=22)
         value_lbl.setStyleSheet("color: #4a9eff; font-weight: bold;")
         value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(title_lbl, 1)
-        v.addWidget(value_lbl, 2)
+        v.addWidget(value_lbl, 1)
         # 保存 value_lbl 引用以便更新
         card._title_label = title_lbl
         card._value_label = value_lbl
         return card
+
+    def on_refresh_clicked(self):
+        """刷新按钮：更新「最近24小时」时段分布；跨天时同步刷新「最近7天趋势」与卡片"""
+        self._refresh_cards()
+        self._refresh_hourly()
+        # 跨天（例如到了次日 00:00）时，最近7天的窗口已经滚动，需要同步刷新
+        if datetime.now().date() != self._last_trend_date:
+            self._refresh_trend()
+        self._refresh_top10()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.refresh_label.setText(f"上次刷新：{now_str}")
 
     def refresh_stats(self):
         """刷新所有统计数据（使用本地时间）"""
@@ -184,26 +227,35 @@ class StatsPanel(QWidget):
         values = [counts.get(d, 0) for d in dates]
         ax.plot(dates, values, marker='o', color='#4a9eff', linewidth=2, markersize=5)
         ax.fill_between(dates, values, alpha=0.2, color='#4a9eff')
-        ax.set_title("最近 7 天使用趋势", color='white', fontsize=11)
-        ax.set_xticks(dates)
+        ax.set_xticks(range(len(dates)))
+        ax.set_xticklabels(dates)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')
-        self.trend_figure.subplots_adjust(left=0.08, right=0.97, top=0.88, bottom=0.18)
+        # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部被裁剪
+        self.trend_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.18)
         self.trend_canvas.draw()
+        # 记录本次趋势刷新所属日期，用于跨天检测
+        self._last_trend_date = today
 
     def _refresh_hourly(self):
-        """24小时时段分布柱状图（本地时间）"""
+        """最近24小时时段分布柱状图（本地时间，滚动窗口）
+
+        仅统计从当前时刻往前倒 24 小时内的使用记录，按小时（0-23）归类，
+        以便实时反映用户「最近这一天」的活跃时段。
+        """
         self.hour_figure.clear()
         ax = self.hour_figure.add_subplot(111)
         ax.set_facecolor('#1e1e1e')
         ax.tick_params(colors='white', labelsize=8)
 
+        now = datetime.now()
+        window_start = now - timedelta(hours=24)
         hour_counts = [0] * 24
         try:
             rows = self.db.get_usage_history()
             for row in rows:
                 dt = self._parse_used_at(row[2])
-                if dt is not None:
+                if dt is not None and window_start <= dt <= now:
                     hour_counts[dt.hour] += 1
         except Exception:
             pass
@@ -211,17 +263,22 @@ class StatsPanel(QWidget):
         hours = list(range(24))
         colors = ['#4a9eff' if h in range(9, 22) else '#3a6ea8' for h in hours]
         ax.bar(hours, hour_counts, color=colors, edgecolor='none')
-        ax.set_title("使用时段分布", color='white', fontsize=11)
         ax.set_xticks(range(0, 24, 3))
         ax.set_xticklabels([f"{h}时" for h in range(0, 24, 3)], color='white', fontsize=8)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')
-        self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.88, bottom=0.18)
+        # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部被裁剪
+        self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.18)
         self.hour_canvas.draw()
 
     def _refresh_top10(self):
-        """最常用 Top10 表情（带缩略图）"""
+        """最常用 Top10 表情（带缩略图）
+
+        排名逻辑：按累计使用次数从高到低排序后取前 10 名，依次编号 #1…#N。
+        若被使用过的表情不足 10 张，则展示全部（#1…#N）；否则只展示最多的 10 张。
+        """
         self.top10_list.clear()
+        self.top10_list.setIconSize(QSize(40, 40))
         try:
             rows = self.db.get_usage_history()
         except Exception:
@@ -237,22 +294,24 @@ class StatsPanel(QWidget):
             image_id = row[1]
             use_counts[image_id] += 1
 
-        # 取 top10
-        top10 = sorted(use_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        # 按使用次数降序排序后取前 10（不足 10 张则全部展示），依次编号 #1…#N
+        ranked = sorted(use_counts.items(), key=lambda x: (-x[1], x[0]))[:10]
 
         # 延迟导入 ThumbnailService
         if self.thumb_service is None:
             from services.thumbnail_service import ThumbnailService
             self.thumb_service = ThumbnailService()
 
-        for rank, (image_id, count) in enumerate(top10, 1):
+        rank = 0
+        for image_id, count in ranked:
             img_row = self.db.get_image_by_id(image_id)
             if not img_row:
                 continue
+            rank += 1
             name = img_row[1]
             file_path = img_row[2]
 
-            item = QListWidgetItem(f"#{rank}  {name}  （使用 {count} 次）")
+            item = QListWidgetItem(f"#{rank:<2d}  {name}   ·   使用 {count} 次")
             item.setData(Qt.ItemDataRole.UserRole, image_id)
 
             # 加载缩略图

@@ -5,7 +5,8 @@ from collections import defaultdict
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QFrame, QScrollArea, QPushButton, QSizePolicy
+    QListWidgetItem, QFrame, QScrollArea, QPushButton, QSizePolicy,
+    QMessageBox
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QFontMetrics
@@ -24,14 +25,15 @@ from utils.config_manager import ConfigManager
 
 
 class StatsPanel(QWidget):
-    """数据统计面板：核心指标 + 趋势图 + 时段分布 + Top10
+    """数据统计面板：核心指标 + 趋势图 + 时段分布 + 使用次数排行榜
 
     保留指标：
     - 总图片数 / 总标签数 / 总使用次数（紧凑小卡片，占幅较小）
     - 每日使用趋势折线图（最近7天）
-    - 使用时段分布图（最近24小时滚动窗口）
-    - 最常用 Top10 表情（列表 + 缩略图）
+    - 使用时段分布图（最近24小时滚动窗口，横坐标细化到每一个小时）
+    - 表情使用次数排行榜（展示全部已使用表情，列表 + 缩略图）
 
+    顶部提供「清空历史记录」按钮，可将所有依赖使用历史的统计回归初始空状态。
     整个面板内容包裹在可滚动区域中，保证图表标题不被裁剪、可拖拽查看。
     时间统一使用本地时间，精确到分钟。
     """
@@ -56,6 +58,11 @@ class StatsPanel(QWidget):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 4px 0;")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+        self.clear_button = QPushButton("🗑 清空历史记录")
+        self.clear_button.setToolTip("清空全部使用历史记录，所有统计将回到初始的空状态")
+        self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_button.clicked.connect(self.on_clear_history_clicked)
+        header_layout.addWidget(self.clear_button)
         self.refresh_button = QPushButton("🔄 刷新")
         self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -84,6 +91,8 @@ class StatsPanel(QWidget):
         cards_layout.addWidget(self.card_tags)
         cards_layout.addWidget(self.card_usage)
         layout.addLayout(cards_layout)
+        # 卡片与下方「最近7天使用趋势」标题之间留出间距，避免两者重合
+        layout.addSpacing(12)
 
         # === 每日使用趋势（最近7天）===
         layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
@@ -101,11 +110,15 @@ class StatsPanel(QWidget):
         self.hour_canvas.setMinimumHeight(200)
         layout.addWidget(self.hour_canvas)
 
-        # === 最常用 Top10 ===
-        layout.addWidget(QLabel("🏆 最常用 Top 10 表情"))
-        self.top10_list = QListWidget()
-        self.top10_list.setMinimumHeight(220)
-        layout.addWidget(self.top10_list)
+        # === 表情使用次数排行榜（展示全部已使用表情）===
+        layout.addWidget(QLabel("🏆 表情使用次数排行榜"))
+        self.ranking_list = QListWidget()
+        self.ranking_list.setMinimumHeight(220)
+        # 列表自身不滚动，由外层滚动区域统一滚动，保证全部排名都能看到
+        self.ranking_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.ranking_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.ranking_list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.ranking_list)
 
         # === 最近刷新时间 ===
         self.refresh_label = QLabel("")
@@ -147,6 +160,26 @@ class StatsPanel(QWidget):
         card._value_label = value_lbl
         return card
 
+    def on_clear_history_clicked(self):
+        """清空全部使用历史记录，并将所有统计刷新回初始空状态"""
+        reply = QMessageBox.question(
+            self,
+            "清空历史记录",
+            "确定要清空全部使用历史记录吗？\n\n"
+            "清空后，总使用次数、使用趋势、时段分布、使用次数排行榜以及"
+            "性格画像报告所依赖的数据都会回到初始的空状态，且无法恢复。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.db.clear_usage_history()
+        except Exception:
+            QMessageBox.warning(self, "清空历史记录", "清空失败，请稍后重试。")
+            return
+        self.refresh_stats()
+
     def on_refresh_clicked(self):
         """刷新按钮：更新「最近24小时」时段分布；跨天时同步刷新「最近7天趋势」与卡片"""
         self._refresh_cards()
@@ -154,7 +187,7 @@ class StatsPanel(QWidget):
         # 跨天（例如到了次日 00:00）时，最近7天的窗口已经滚动，需要同步刷新
         if datetime.now().date() != self._last_trend_date:
             self._refresh_trend()
-        self._refresh_top10()
+        self._refresh_ranking()
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.refresh_label.setText(f"上次刷新：{now_str}")
 
@@ -163,7 +196,7 @@ class StatsPanel(QWidget):
         self._refresh_cards()
         self._refresh_trend()
         self._refresh_hourly()
-        self._refresh_top10()
+        self._refresh_ranking()
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.refresh_label.setText(f"上次刷新：{now_str}")
 
@@ -263,29 +296,33 @@ class StatsPanel(QWidget):
         hours = list(range(24))
         colors = ['#4a9eff' if h in range(9, 22) else '#3a6ea8' for h in hours]
         ax.bar(hours, hour_counts, color=colors, edgecolor='none')
-        ax.set_xticks(range(0, 24, 3))
-        ax.set_xticklabels([f"{h}时" for h in range(0, 24, 3)], color='white', fontsize=8)
+        # 横坐标细化到每一个小时（0时…23时），便于观察每小时的使用情况
+        ax.set_xticks(hours)
+        ax.set_xticklabels([f"{h}时" for h in hours], color='white', fontsize=6, rotation=90)
+        ax.set_xlim(-0.5, 23.5)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')
-        # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部被裁剪
-        self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.18)
+        # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部/底部被裁剪
+        self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.22)
         self.hour_canvas.draw()
 
-    def _refresh_top10(self):
-        """最常用 Top10 表情（带缩略图）
+    def _refresh_ranking(self):
+        """表情使用次数排行榜（展示全部已使用表情，带缩略图）
 
-        排名逻辑：按累计使用次数从高到低排序后取前 10 名，依次编号 #1…#N。
-        若被使用过的表情不足 10 张，则展示全部（#1…#N）；否则只展示最多的 10 张。
+        排名逻辑：按累计使用次数从高到低排序，依次编号 #1…#N，展示所有
+        被使用过的表情（不再限制为 Top10）。列表高度随条目数量自适应，
+        由外层滚动区域统一滚动，保证每一名都能完整查看。
         """
-        self.top10_list.clear()
-        self.top10_list.setIconSize(QSize(40, 40))
+        self.ranking_list.clear()
+        self.ranking_list.setIconSize(QSize(40, 40))
         try:
             rows = self.db.get_usage_history()
         except Exception:
-            return
+            rows = []
 
         if not rows:
-            self.top10_list.addItem("暂无使用记录")
+            self.ranking_list.addItem("暂无使用记录")
+            self._fit_ranking_height()
             return
 
         # 统计每张图片的使用次数
@@ -294,8 +331,8 @@ class StatsPanel(QWidget):
             image_id = row[1]
             use_counts[image_id] += 1
 
-        # 按使用次数降序排序后取前 10（不足 10 张则全部展示），依次编号 #1…#N
-        ranked = sorted(use_counts.items(), key=lambda x: (-x[1], x[0]))[:10]
+        # 按使用次数降序排序（次数相同按 image_id 升序），展示全部，依次编号 #1…#N
+        ranked = sorted(use_counts.items(), key=lambda x: (-x[1], x[0]))
 
         # 延迟导入 ThumbnailService
         if self.thumb_service is None:
@@ -326,7 +363,22 @@ class StatsPanel(QWidget):
                                        Qt.TransformationMode.SmoothTransformation)
                 item.setIcon(QIcon(scaled))
 
-            self.top10_list.addItem(item)
+            self.ranking_list.addItem(item)
+
+        self._fit_ranking_height()
+
+    def _fit_ranking_height(self):
+        """根据条目数量调整排行榜列表高度，使全部排名都能在滚动区域内展示"""
+        count = self.ranking_list.count()
+        if count <= 0:
+            self.ranking_list.setFixedHeight(220)
+            return
+        row_height = self.ranking_list.sizeHintForRow(0)
+        if row_height <= 0:
+            row_height = 48
+        frame = 2 * self.ranking_list.frameWidth()
+        total = row_height * count + frame + 4
+        self.ranking_list.setFixedHeight(total)
 
 
 class AutoFitLabel(QLabel):

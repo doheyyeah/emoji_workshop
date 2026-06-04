@@ -24,7 +24,6 @@ from views.report_view import ReportDialog
 from services.database_service import DatabaseService
 from services.clipboard_monitor import ClipboardMonitor
 from services.api_service import APIService
-from services.network_monitor import NetworkMonitor
 from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
@@ -69,7 +68,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("就绪")
         self.status_tip_label = QLabel("💡 想从网页保存图片? 浏览器右键 → 图片另存为 → 然后拖入本程序")
         self.statusBar().addPermanentWidget(self.status_tip_label, 1)
-        self._setup_network_monitor()
 
     def _restore_window_state(self):
         """从配置恢复窗口位置和大小"""
@@ -194,36 +192,6 @@ class MainWindow(QMainWindow):
         self.style().unpolish(self)
         self.style().polish(self)
 
-    def _setup_network_monitor(self):
-        self.network_labels = {}
-        for key, display in (("kimi", "Kimi"), ("zhipu", "智谱"), ("doubao", "豆包")):
-            label = QLabel(f"⚪ {display} 未配置")
-            label.setObjectName("networkStatusLabel")
-            self.network_labels[key] = label
-            self.statusBar().addPermanentWidget(label)
-        self.network_monitor = NetworkMonitor(self.config)
-        self.network_monitor.status_changed.connect(self._update_network_status)
-        self.network_monitor.start()
-
-    def _update_network_status(self, provider_name: str, is_online: bool, latency_ms: int):
-        label = self.network_labels.get(provider_name)
-        if not label:
-            return
-        display = {"kimi": "Kimi", "zhipu": "智谱", "doubao": "豆包"}.get(provider_name, provider_name)
-        if latency_ms == -1:
-            label.setText(f"⚪ {display} 未配置")
-            label.setToolTip(f"{display}: 未配置 Key")
-            return
-        if is_online and latency_ms <= 2000:
-            label.setText(f"🟢 {display} {latency_ms}ms")
-            label.setToolTip(f"{display}: 在线，延迟 {latency_ms}ms")
-        elif is_online:
-            label.setText(f"🟡 {display} {latency_ms}ms")
-            label.setToolTip(f"{display}: 较慢，延迟 {latency_ms}ms")
-        else:
-            label.setText(f"🔴 {display} 离线")
-            label.setToolTip(f"{display}: 离线")
-
     def _open_report_dialog(self):
         """打开性格画像报告对话框"""
         dialog = ReportDialog(self.db_service, self)
@@ -312,8 +280,6 @@ class MainWindow(QMainWindow):
 
         self.config.save()
         self.api_service.cancel_all_downloads()
-        if hasattr(self, "network_monitor"):
-            self.network_monitor.stop()
         event.accept()
 
 

@@ -45,7 +45,7 @@ class AIGenerateWorker(QThread):
             self.finished.emit(self.save_path)
         except Exception as exc:
             logging.debug("[AIService] 生成失败: %s", exc)
-            self.error.emit("生成失败,请检查 API Key 或更换提供商")
+            self.error.emit("⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
 
 
 class AIService:

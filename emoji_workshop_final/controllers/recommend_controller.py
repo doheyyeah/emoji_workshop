@@ -32,8 +32,8 @@ class RecommendController:
         阶段 2（可选）: 视觉精排 → top_k
 
         视觉未启用：只走文本 LLM
-        视觉调用失败：降级到文本 LLM 结果（不降级到 jieba），打印日志
-        LLM 未启用或无 Key：直接抛出异常（不降级到 jieba）
+        视觉调用失败：降级到文本 LLM 结果，并记录日志
+        LLM 未启用或无 Key：直接抛出异常，不做本地降级
         """
         config = self.config_manager.get_llm_config()
         if not config.get("enabled"):
@@ -53,7 +53,7 @@ class RecommendController:
         try:
             recommended_tags = llm.recommend_tags(context, all_tags, top_k=top_k)
         except Exception as exc:
-            raise RuntimeError("LLM 调用失败，请检查 API Key 或网络设置") from exc
+            raise RuntimeError("AI 连接失败：网络不佳或 API Key 无效，请检查设置") from exc
         self.last_recommended_tags = recommended_tags
 
         if not recommended_tags:

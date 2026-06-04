@@ -63,7 +63,7 @@ ORDER BY i.created_at DESC
 LIMIT top_k
 ```
 
-当 LLM 未启用或调用失败时，会返回中文错误提示，不再回退 jieba。
+当 LLM 未启用或调用失败时，会返回中文错误提示，不做本地降级。
 
 ---
 

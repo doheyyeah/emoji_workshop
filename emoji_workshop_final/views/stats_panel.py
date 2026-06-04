@@ -298,7 +298,7 @@ class StatsPanel(QWidget):
         ax.bar(hours, hour_counts, color=colors, edgecolor='none')
         # 横坐标细化到每一个小时（0时…23时），便于观察每小时的使用情况
         ax.set_xticks(hours)
-        ax.set_xticklabels([f"{h}时" for h in hours], color='white', fontsize=6, rotation=90)
+        ax.set_xticklabels([f"{h}时" for h in hours], color='white', fontsize=7, rotation=90)
         ax.set_xlim(-0.5, 23.5)
         for spine in ax.spines.values():
             spine.set_color('#3e3e42')

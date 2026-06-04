@@ -311,7 +311,7 @@ class StatsPanel(QWidget):
             name = img_row[1]
             file_path = img_row[2]
 
-            item = QListWidgetItem(f"#{rank:<2d}  {name}   ·   使用 {count} 次")
+            item = QListWidgetItem(f"#{rank}  {name}   ·   使用 {count} 次")
             item.setData(Qt.ItemDataRole.UserRole, image_id)
 
             # 加载缩略图

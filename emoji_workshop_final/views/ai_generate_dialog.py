@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -30,6 +30,69 @@ from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
 
+class MultiFrameGifWorker(QThread):
+    """后台生成多帧 GIF，避免阻塞主线程"""
+
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(
+        self,
+        ai_service: AIService,
+        prompt: str,
+        save_dir: str,
+        output_path: str,
+        frame_count: int,
+        duration: int,
+        provider: str,
+        width: int,
+        height: int,
+        api_key: str = "",
+        model: str = "",
+        base_url: str = "",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.ai_service = ai_service
+        self.prompt = prompt
+        self.save_dir = save_dir
+        self.output_path = output_path
+        self.frame_count = frame_count
+        self.duration = duration
+        self.provider = provider
+        self.width = width
+        self.height = height
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+
+    def run(self):
+        try:
+            provider_obj = self.ai_service.providers.get(self.provider, self.ai_service.providers["pollinations"])
+            temp_paths = []
+            for i in range(self.frame_count):
+                if self.isInterruptionRequested():
+                    return
+                self.progress.emit(f"正在连接 AI 并生成第 {i + 1}/{self.frame_count} 帧…")
+                path = str(Path(self.save_dir) / f"gif_frame_{i}.png")
+                image_bytes = provider_obj.generate(
+                    self.prompt,
+                    self.width,
+                    self.height,
+                    api_key=self.api_key,
+                    model=self.model,
+                    base_url=self.base_url,
+                )
+                with open(path, "wb") as f:
+                    f.write(image_bytes)
+                temp_paths.append(path)
+            output = GifGenerator.make_multiframe_gif(temp_paths, self.output_path, duration=self.duration)
+            self.finished.emit(output)
+        except Exception:
+            self.error.emit("⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
+
+
 class AIGenerateDialog(QDialog):
     """AI 文生图与 GIF 生成对话框"""
 
@@ -42,6 +105,7 @@ class AIGenerateDialog(QDialog):
         self.generated_path = None
         self.gif_path = None
         self.gif_path_b = None
+        self.gif_worker = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
         self.setMinimumSize(650, 760)
@@ -395,7 +459,7 @@ class AIGenerateDialog(QDialog):
         self.import_btn.setEnabled(False)
         self.preview_label.setText("生成中...")
         self.preview_label.setPixmap(QPixmap())
-        self.status_label.setText("正在生成图片，请稍候...")
+        self.status_label.setText("正在连接 AI 并生成图片，请稍候…")
 
         self.worker = self.ai.generate_image(
             prompt=prompt,
@@ -445,9 +509,9 @@ class AIGenerateDialog(QDialog):
 
     def _on_error(self, _error_msg: str):
         self._reset_generate_ui()
-        self.status_label.setText("生成失败,请检查 API Key 或更换提供商")
+        self.status_label.setText("⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
         self.preview_label.setText("生成失败")
-        QMessageBox.critical(self, "生成失败", "生成失败,请检查 API Key 或更换提供商")
+        QMessageBox.critical(self, "生成失败", "⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
 
     def _pick_text_color(self):
         from PyQt6.QtGui import QColor
@@ -494,25 +558,53 @@ class AIGenerateDialog(QDialog):
         output_path = str(Path(save_dir) / "multiframe_emoji.gif")
         frame_count = self.gif_frames_spin.value()
         duration = self.gif_duration_spin.value()
-        try:
-            temp_paths = []
-            for i in range(frame_count):
-                path = str(Path(save_dir) / f"gif_frame_{i}.png")
-                worker = self.ai.generate_image(
-                    prompt=prompt,
-                    save_path=path,
-                    provider=self.provider_combo.currentData(),
-                )
-                worker.wait(120000)
-                temp_paths.append(path)
-            self.gif_path_b = GifGenerator.make_multiframe_gif(temp_paths, output_path, duration=duration)
-            self.gif_b_preview.setPixmap(QPixmap(self.gif_path_b))
-            self.gif_b_preview.setStyleSheet("QLabel { border: none; }")
-            self.gif_b_save_btn.setEnabled(True)
-            QMessageBox.information(self, "完成", "多帧 GIF 生成成功！")
-        except Exception as exc:
-            QMessageBox.critical(self, "生成失败", "生成失败,请检查 API Key 或更换提供商")
-            self.gif_b_preview.setToolTip(str(exc))
+        provider = self.provider_combo.currentData()
+        if provider != "pollinations":
+            self._on_provider_field_changed()
+
+        self.gif_b_generate_btn.setEnabled(False)
+        self.gif_b_save_btn.setEnabled(False)
+        self.gif_b_preview.setText("正在连接 AI 并生成多帧 GIF…")
+        self.status_label.setText("正在连接 AI 并生成多帧 GIF，请稍候…")
+
+        self.gif_worker = MultiFrameGifWorker(
+            ai_service=self.ai,
+            prompt=prompt,
+            save_dir=save_dir,
+            output_path=output_path,
+            frame_count=frame_count,
+            duration=duration,
+            provider=provider,
+            width=self.width_spin.value(),
+            height=self.height_spin.value(),
+            api_key=self.apikey_edit.text().strip(),
+            model=self.model_edit.text().strip(),
+            base_url=self.base_url_edit.text().strip(),
+            parent=self,
+        )
+        self.gif_worker.progress.connect(self.status_label.setText)
+        self.gif_worker.finished.connect(self._on_gif_b_finished)
+        self.gif_worker.error.connect(self._on_gif_b_error)
+        self.gif_worker.finished.connect(lambda _: self._on_gif_b_done())
+        self.gif_worker.error.connect(lambda _: self._on_gif_b_done())
+        self.gif_worker.start()
+
+    def _on_gif_b_finished(self, gif_path: str):
+        self.gif_path_b = gif_path
+        self.gif_b_preview.setPixmap(QPixmap(gif_path))
+        self.gif_b_preview.setStyleSheet("QLabel { border: none; }")
+        self.gif_b_save_btn.setEnabled(True)
+        self.status_label.setText("多帧 GIF 生成成功")
+        QMessageBox.information(self, "完成", "多帧 GIF 生成成功！")
+
+    def _on_gif_b_error(self, msg: str):
+        self.gif_b_preview.setText("生成失败")
+        self.status_label.setText(msg)
+        QMessageBox.critical(self, "生成失败", msg)
+
+    def _on_gif_b_done(self):
+        self.gif_b_generate_btn.setEnabled(True)
+        self.gif_worker = None
 
     def _generate_gif(self):
         """兼容旧接口（自动路由到模式 A）"""

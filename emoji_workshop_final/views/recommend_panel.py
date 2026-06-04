@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QThread
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
     QLabel,
@@ -41,6 +41,7 @@ class RecommendPanel(QWidget):
         self.controller = RecommendController(db_service)
         self.config = ConfigManager()
         self.thumb_service = ThumbnailService()
+        self.recommend_worker = None
         self._setup_ui()
 
     # ------------------------------------------------------------------
@@ -106,21 +107,52 @@ class RecommendPanel(QWidget):
         context = self.context_input.toPlainText().strip()
         if not context:
             self.error_label.setText("请输入聊天上下文后再推荐")
+            self.error_label.setVisible(True)
             return
 
-        try:
-            results = self.controller.recommend(context, top_k=6)
-            tags = self.controller.last_recommended_tags
-            self.error_label.setText("")
-            self.error_label.setVisible(False)
-            self.goto_settings_btn.setVisible(False)
-            self._show_results(results)
-        except Exception as exc:
-            self.result_list.clear()
-            self.hint_label.setText("推荐失败")
-            self.error_label.setText(str(exc))
-            self.error_label.setVisible(True)
-            self.goto_settings_btn.setVisible(True)
+        self.recommend_btn.setEnabled(False)
+        self.recommend_btn.setText("连接中…")
+        self.error_label.setVisible(False)
+        self.goto_settings_btn.setVisible(False)
+        self.hint_label.setText("🔄 正在连接 AI…")
+
+        self.recommend_worker = RecommendWorker(self.controller, context, top_k=6, parent=self)
+        self.recommend_worker.succeeded.connect(self._on_recommend_success)
+        self.recommend_worker.failed.connect(self._on_recommend_failed)
+        self.recommend_worker.finished.connect(self._on_recommend_done)
+        self.recommend_worker.start()
+
+    def _on_recommend_success(self, results, _tags) -> None:
+        self.error_label.setText("")
+        self.error_label.setVisible(False)
+        self.goto_settings_btn.setVisible(False)
+        self._show_results(results)
+        if results:
+            self.hint_label.setText("✅ AI 连接成功，双击结果可复制到剪贴板")
+        else:
+            self.hint_label.setText("AI 已连接，暂无推荐结果，请先导入并标注标签")
+
+    def _on_recommend_failed(self, raw_msg: str) -> None:
+        self.result_list.clear()
+        self.hint_label.setText("推荐失败")
+        msg = self._friendly_error(raw_msg)
+        self.error_label.setText(msg)
+        self.error_label.setVisible(True)
+        needs_settings = ("设置" in raw_msg) or ("未启用" in raw_msg) or ("未配置" in raw_msg)
+        self.goto_settings_btn.setVisible(needs_settings)
+
+    def _on_recommend_done(self) -> None:
+        self.recommend_btn.setEnabled(True)
+        self.recommend_btn.setText("🔍 推荐")
+        self.recommend_worker = None
+
+    @staticmethod
+    def _friendly_error(raw_msg: str) -> str:
+        if any(keyword in raw_msg for keyword in ("未启用", "未配置", "当前库中没有任何标签")):
+            return raw_msg
+        if "未返回任何推荐标签" in raw_msg:
+            return "⚠️ AI 已连接，但未返回可用推荐，请稍后再试"
+        return "⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置"
 
     def _show_results(self, models) -> None:
         """将推荐结果渲染到列表，第 1 项添加 ⭐ 最佳推荐角标"""
@@ -193,3 +225,25 @@ class RecommendPanel(QWidget):
         main_win = self.window()
         if hasattr(main_win, "_open_settings"):
             main_win._open_settings()
+
+
+class RecommendWorker(QThread):
+    """后台执行推荐请求，避免阻塞界面"""
+
+    succeeded = pyqtSignal(object, object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, controller: RecommendController, context: str, top_k: int, parent=None) -> None:
+        super().__init__(parent)
+        self._controller = controller
+        self._context = context
+        self._top_k = top_k
+
+    def run(self) -> None:
+        try:
+            results = self._controller.recommend(self._context, top_k=self._top_k)
+            tags = list(self._controller.last_recommended_tags)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        self.succeeded.emit(results, tags)

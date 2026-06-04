@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QFrame
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor
+from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QFontMetrics
 
 # Matplotlib 嵌入 PyQt6
 import matplotlib
@@ -101,15 +101,17 @@ class StatsPanel(QWidget):
         card.setMinimumHeight(120)
         v = QVBoxLayout(card)
         v.setContentsMargins(16, 16, 16, 16)
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("color: #aaa; font-size: 14px;")
+        title_lbl = AutoFitLabel(title, min_size=10, max_size=14)
+        title_lbl.setWordWrap(True)
+        title_lbl.setStyleSheet("color: #aaa;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        value_lbl = QLabel(value)
-        value_lbl.setStyleSheet("color: #4a9eff; font-size: 36px; font-weight: bold;")
+        value_lbl = AutoFitLabel(value, min_size=14, max_size=36)
+        value_lbl.setStyleSheet("color: #4a9eff; font-weight: bold;")
         value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        v.addWidget(title_lbl)
-        v.addWidget(value_lbl)
+        v.addWidget(title_lbl, 1)
+        v.addWidget(value_lbl, 2)
         # 保存 value_lbl 引用以便更新
+        card._title_label = title_lbl
         card._value_label = value_lbl
         return card
 
@@ -266,3 +268,40 @@ class StatsPanel(QWidget):
                 item.setIcon(QIcon(scaled))
 
             self.top10_list.addItem(item)
+
+
+class AutoFitLabel(QLabel):
+    """根据当前控件尺寸自动调整字号，避免文本被裁剪"""
+
+    def __init__(self, text: str = "", min_size: int = 10, max_size: int = 36, parent=None):
+        super().__init__(text, parent)
+        self._min_size = min_size
+        self._max_size = max_size
+        self._update_font()
+
+    def setText(self, text: str):
+        super().setText(text)
+        self._update_font()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_font()
+
+    def _update_font(self):
+        text = self.text() or " "
+        rect = self.contentsRect()
+        max_w = max(10, rect.width() - 6)
+        max_h = max(10, rect.height() - 6)
+        font = self.font()
+        flags = int(self.alignment())
+        if self.wordWrap():
+            flags |= int(Qt.TextFlag.TextWordWrap)
+        for size in range(self._max_size, self._min_size - 1, -1):
+            font.setPointSize(size)
+            metrics = QFontMetrics(font)
+            text_rect = metrics.boundingRect(0, 0, max_w, max_h, flags, text)
+            if text_rect.height() <= max_h and text_rect.width() <= max_w:
+                self.setFont(font)
+                return
+        font.setPointSize(self._min_size)
+        self.setFont(font)

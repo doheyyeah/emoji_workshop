@@ -349,6 +349,18 @@ class DatabaseService:
                 )
             return cursor.fetchall()
 
+    def clear_usage_history(self):
+        """清空全部使用历史记录（用于「清空历史记录」操作）
+
+        清空后，依赖 usage_history 的所有统计（总使用次数、使用趋势、
+        时段分布、使用次数排行榜、性格画像报告）都会回到初始空状态。
+        """
+        self.ensure_usage_history_table()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM usage_history')
+            conn.commit()
+
     @staticmethod
     def _row_to_image_dict(row: tuple) -> dict:
         return {

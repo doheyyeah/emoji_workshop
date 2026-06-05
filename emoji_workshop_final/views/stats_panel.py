@@ -90,9 +90,10 @@ class StatsPanel(QWidget):
         cards_layout.addWidget(self.card_images)
         cards_layout.addWidget(self.card_tags)
         cards_layout.addWidget(self.card_usage)
+        # 卡片整体靠上对齐，避免占据多余的纵向空间
         layout.addLayout(cards_layout)
-        # 卡片与下方「最近7天使用趋势」标题之间留出间距，避免两者重合
-        layout.addSpacing(12)
+        # 卡片与下方「最近7天使用趋势」标题之间留出更充足的间距，避免两者重合
+        layout.addSpacing(28)
 
         # === 每日使用趋势（最近7天）===
         layout.addWidget(QLabel("📈 最近 7 天使用趋势"))

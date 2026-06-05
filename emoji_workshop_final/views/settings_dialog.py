@@ -24,8 +24,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = ConfigManager()
         self.setWindowTitle("⚙️ 应用设置")
-        self.setMinimumSize(700, 550)
-        self.resize(800, 650)
+        self.setMinimumSize(760, 600)
+        self.resize(900, 800)
         self._setup_ui()
         self._load_all_settings()
 
@@ -322,7 +322,7 @@ class SettingsDialog(QDialog):
         replicate = self.config.get_replicate_config()
         self.replicate_base_url_edit.setText(replicate.get("base_url", ""))
         self.replicate_api_key_edit.setText(replicate.get("api_key", ""))
-        self.replicate_model_edit.setText(replicate.get("model", "fofr/sticker-maker"))
+        self.replicate_model_edit.setText(replicate.get("model", ""))
 
     # ===== 保存设置 =====
 
@@ -355,7 +355,7 @@ class SettingsDialog(QDialog):
         self.config.set_replicate_config(
             base_url=self.replicate_base_url_edit.text().strip(),
             api_key=self.replicate_api_key_edit.text().strip(),
-            model=self.replicate_model_edit.text().strip() or "fofr/sticker-maker",
+            model=self.replicate_model_edit.text().strip(),
         )
 
         # 强制保存

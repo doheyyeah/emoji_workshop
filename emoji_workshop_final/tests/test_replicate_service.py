@@ -82,7 +82,7 @@ def test_replicate_config_defaults_and_setter(monkeypatch, tmp_path):
     assert cfg.get_replicate_config() == {
         "base_url": "",
         "api_key": "",
-        "model": "fofr/sticker-maker",
+        "model": "",
     }
 
     cfg.set_replicate_config(

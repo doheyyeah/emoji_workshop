@@ -164,7 +164,6 @@ class AIGenerateDialog(QDialog):
         prompt_layout = QVBoxLayout()
         self.gif_prompt_edit = QTextEdit()
         self.gif_prompt_edit.setMaximumHeight(100)
-        self.gif_prompt_edit.setPlaceholderText("例如：一只开心挥手的小猫，透明背景，循环动画")
         prompt_layout.addWidget(self.gif_prompt_edit)
         prompt_group.setLayout(prompt_layout)
         layout.addWidget(prompt_group)

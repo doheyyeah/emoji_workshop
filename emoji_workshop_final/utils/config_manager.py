@@ -90,7 +90,7 @@ class ConfigManager:
             "replicate": {
                 "base_url": "",
                 "api_key": "",
-                "model": "fofr/sticker-maker"
+                "model": ""
             },
             "behavior": {
                 "auto_save": True,          # 修改后自动保存配置
@@ -259,7 +259,7 @@ class ConfigManager:
         return {
             "base_url": cfg.get("base_url", ""),
             "api_key": cfg.get("api_key", ""),
-            "model": cfg.get("model", "fofr/sticker-maker"),
+            "model": cfg.get("model", ""),
         }
 
     def set_replicate_config(self, base_url: str, api_key: str, model: str) -> None:

@@ -67,9 +67,11 @@ class TagPanel(QWidget):
         self.tag_input = QLineEdit()
         self.tag_input.setPlaceholderText("输入标签名...")
         self.color_btn = QPushButton("🎨")
+        self.color_btn.setObjectName("secondaryButton")
         self.color_btn.setFixedWidth(40)
         self.color_btn.clicked.connect(self.pick_color)
         self.add_btn = QPushButton("➕ 添加")
+        self.add_btn.setObjectName("primaryButton")
         self.add_btn.clicked.connect(self.add_tag)
         add_layout.addWidget(self.tag_input)
         add_layout.addWidget(self.color_btn)
@@ -78,6 +80,7 @@ class TagPanel(QWidget):
 
         # === 标签列表 ===
         self.tag_list = QListWidget()
+        self.tag_list.setObjectName("tagList")
         self.tag_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.tag_list.itemSelectionChanged.connect(self.on_selection_changed)
         self.tag_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -89,11 +92,13 @@ class TagPanel(QWidget):
         self.image_tags_label = QLabel("选中图片的标签：")
         layout.addWidget(self.image_tags_label)
         self.image_tag_list = QListWidget()
+        self.image_tag_list.setObjectName("imageTagList")
         self.image_tag_list.setMaximumHeight(100)
         layout.addWidget(self.image_tag_list)
 
         # === 给图片打标签 ===
         self.assign_btn = QPushButton("🏷️ 添加到选中图片")
+        self.assign_btn.setObjectName("primaryButton")
         self.assign_btn.setEnabled(False)
         self.assign_btn.clicked.connect(self.assign_tags_to_image)
         layout.addWidget(self.assign_btn)

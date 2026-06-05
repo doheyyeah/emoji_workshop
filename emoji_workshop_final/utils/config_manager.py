@@ -87,11 +87,6 @@ class ConfigManager:
                 "api_key": "",
                 "model": ""
             },
-            "replicate": {
-                "base_url": "",
-                "api_key": "",
-                "model": ""
-            },
             "behavior": {
                 "auto_save": True,          # 修改后自动保存配置
                 "confirm_delete": True,     # 删除前确认
@@ -252,21 +247,6 @@ class ConfigManager:
         self.set("vision.base_url", base_url)
         self.set("vision.api_key", api_key)
         self.set("vision.model", model)
-
-    def get_replicate_config(self) -> dict:
-        """获取 Replicate 动图配置"""
-        cfg = self.get("replicate", {}) or {}
-        return {
-            "base_url": cfg.get("base_url", ""),
-            "api_key": cfg.get("api_key", ""),
-            "model": cfg.get("model", ""),
-        }
-
-    def set_replicate_config(self, base_url: str, api_key: str, model: str) -> None:
-        """设置 Replicate 动图配置"""
-        self.set("replicate.base_url", base_url)
-        self.set("replicate.api_key", api_key)
-        self.set("replicate.model", model)
 
     def get_ai_provider_config(self, name: str | None = None) -> dict:
         """获取 AI 文生图提供商配置（兼容旧配置）"""

@@ -3,8 +3,7 @@
 职责：
 - 读取 usage_history 表中的使用记录
 - 分析使用时段、高频表情、高频标签
-- 优先使用 LLM 结合统计、时段和季节生成有趣画像
-- LLM 不可用时降级为本地规则画像
+- 基于规则推断用户性格倾向
 - 生成结构化报告字典
 
 说明：
@@ -14,14 +13,10 @@
 
 from __future__ import annotations
 
-import html
-import re
 from collections import Counter
 from datetime import datetime, timedelta
 
 from services.database_service import DatabaseService
-from services.llm_service import LLMService
-from utils.config_manager import ConfigManager
 
 
 # 时段定义
@@ -35,7 +30,7 @@ _PERIOD_NAMES = {
     range(0, 5):   "深夜",
 }
 
-# 性格规则：(关键词集合, 特征标签)，作为 LLM 不可用时的兜底
+# 性格规则：(关键词集合, 特征标签)
 _PERSONALITY_RULES: list[tuple[set[str], str]] = [
     ({"开心", "快乐", "笑", "哈哈", "高兴", "喜悦", "棒", "厉害"}, "阳光开朗"),
     ({"难过", "哭", "沮丧", "伤心", "失落", "委屈", "痛苦"}, "感性细腻"),
@@ -53,23 +48,11 @@ def _hour_to_period(hour: int) -> str:
     return "深夜"
 
 
-def _month_to_season(month: int) -> str:
-    """将月份转换为季节名称"""
-    if month in (3, 4, 5):
-        return "春季"
-    if month in (6, 7, 8):
-        return "夏季"
-    if month in (9, 10, 11):
-        return "秋季"
-    return "冬季"
-
-
 class ReportController:
     """性格画像报告控制器"""
 
-    def __init__(self, db_service: DatabaseService, config_manager: ConfigManager | None = None) -> None:
+    def __init__(self, db_service: DatabaseService) -> None:
         self.db = db_service
-        self.config = config_manager or ConfigManager()
         # 确保 usage_history 表存在
         self.db.ensure_usage_history_table()
 
@@ -78,14 +61,72 @@ class ReportController:
     # ------------------------------------------------------------------
 
     def generate_report(self, period: str = "week") -> dict:
-        """生成性格画像报告
+        """Generate an enhanced personality profile using PersonalityService.
 
-        Args:
-            period: 统计粒度，"week" / "month" / "all"
-
-        Returns:
-            包含报告各字段的字典。
+        Falls back to the original lightweight report when data missing.
         """
+        try:
+            from services.personality_service import PersonalityService
+        except Exception:
+            # personality service missing; fallback to legacy behavior
+            return self._legacy_generate_report(period)
+
+        ps = PersonalityService(self.db, None)
+        profile = ps.generate_profile(period)
+
+        # Add a compact structure compatible with previous interface
+        # active_hours / top_images / top_tags can be approximated from DB
+        since, period_label = self._calc_since_and_label(period)
+        records = self.db.get_usage_history(since)
+        total_uses = len(records)
+        hour_counter: Counter = Counter()
+        image_counter: Counter = Counter()
+        for rec in records:
+            image_counter[rec[1]] += 1
+            dt = None
+            try:
+                dt = datetime.fromisoformat(str(rec[2]))
+            except Exception:
+                pass
+            if dt:
+                hour_counter[dt.hour] += 1
+
+        active_hours = sorted(hour_counter.items(), key=lambda x: -x[1])
+        peak_hour = active_hours[0][0] if active_hours else 12
+        peak_period = _hour_to_period(peak_hour)
+
+        top_image_ids = [img_id for img_id, _ in image_counter.most_common(5)]
+        top_images: list[tuple[int, str, int]] = []
+        for img_id in top_image_ids:
+            row = self.db.get_image_by_id(img_id)
+            name = row[1] if row else f"图片#{img_id}"
+            top_images.append((img_id, name, image_counter[img_id]))
+
+        # top tags
+        tag_counter: Counter = Counter()
+        for img_id, cnt in image_counter.items():
+            tag_rows = self.db.get_image_tags(img_id)
+            for tag_row in tag_rows:
+                tag_counter[tag_row[1]] += cnt
+        top_tags = tag_counter.most_common(10)
+
+        # assemble compatible dict
+        result = {
+            "period": profile.get("period", period_label),
+            "total_uses": profile.get("total_uses", total_uses),
+            "active_hours": active_hours,
+            "peak_period": peak_period,
+            "top_images": top_images,
+            "top_tags": top_tags,
+            "personality_traits": [profile.get("short_summary", "")],
+            "summary_text": profile.get("summary_text", ""),
+            "profile_dimensions": profile.get("dimensions", {}),
+            "examples": profile.get("examples", []),
+        }
+        return result
+
+    def _legacy_generate_report(self, period: str = "week") -> dict:
+        """原始实现的回退路径：保持与旧接口兼容的报告逻辑。"""
         since, period_label = self._calc_since_and_label(period)
         records = self.db.get_usage_history(since)
         total_uses = len(records)
@@ -93,10 +134,7 @@ class ReportController:
         if total_uses == 0:
             return self._empty_report(period_label)
 
-        now = datetime.now()
-        season = _month_to_season(now.month)
-
-        # 分析时段、图片使用
+        # 分析时段
         hour_counter: Counter = Counter()
         image_counter: Counter = Counter()
         for rec in records:
@@ -131,36 +169,15 @@ class ReportController:
                 tag_counter[tag_name] += image_counter[img_id]
         top_tags = tag_counter.most_common(10)
 
-        # 兜底规则画像
-        fallback_traits = self._infer_personality(tag_counter, peak_period, total_uses)
-        fallback_description = self._build_fallback_description(
-            peak_period, season, top_tags, fallback_traits
-        )
-
-        # 优先尝试 LLM 画像；失败则使用兜底画像
-        ai_traits, ai_description, ai_enabled = self._generate_llm_personality(
-            period_label=period_label,
-            total_uses=total_uses,
-            peak_period=peak_period,
-            season=season,
-            active_hours=active_hours,
-            top_images=top_images,
-            top_tags=top_tags,
-            fallback_traits=fallback_traits,
-            fallback_description=fallback_description,
+        # 性格判断
+        personality_traits = self._infer_personality(
+            tag_counter, peak_period, total_uses
         )
 
         # 组装报告文字
         summary_text = self._build_summary(
-            period_label=period_label,
-            total_uses=total_uses,
-            peak_period=peak_period,
-            season=season,
-            top_images=top_images,
-            top_tags=top_tags,
-            personality_traits=ai_traits,
-            personality_description=ai_description,
-            ai_enabled=ai_enabled,
+            period_label, total_uses, peak_period,
+            top_images, top_tags, personality_traits
         )
 
         return {
@@ -168,12 +185,9 @@ class ReportController:
             "total_uses": total_uses,
             "active_hours": active_hours,
             "peak_period": peak_period,
-            "season": season,
             "top_images": top_images,
             "top_tags": top_tags,
-            "personality_traits": ai_traits,
-            "personality_description": ai_description,
-            "ai_enabled": ai_enabled,
+            "personality_traits": personality_traits,
             "summary_text": summary_text,
         }
 
@@ -206,12 +220,9 @@ class ReportController:
             "total_uses": 0,
             "active_hours": [],
             "peak_period": "—",
-            "season": _month_to_season(datetime.now().month),
             "top_images": [],
             "top_tags": [],
             "personality_traits": [],
-            "personality_description": "",
-            "ai_enabled": False,
             "summary_text": f"<p>{period_label}暂无使用记录。<br>开始使用表情包，这里会生成你的专属性格画像！✨</p>",
         }
 
@@ -221,7 +232,7 @@ class ReportController:
         peak_period: str,
         total_uses: int,
     ) -> list[str]:
-        """基于标签分布和使用时段推断性格特征（LLM 不可用时兜底）"""
+        """基于标签分布和使用时段推断性格特征"""
         traits: list[str] = []
         total_tag_uses = sum(tag_counter.values()) or 1
 
@@ -242,130 +253,38 @@ class ReportController:
         if not traits:
             traits.append("神秘莫测")
 
-        return traits[:5]
-
-    @staticmethod
-    def _build_fallback_description(
-        peak_period: str,
-        season: str,
-        top_tags: list[tuple[str, int]],
-        traits: list[str],
-    ) -> str:
-        tag_text = "、".join(tag for tag, _ in top_tags[:3]) or "一些很有个人风格的表情"
-        trait_text = "、".join(traits) or "神秘莫测"
-        return (
-            f"你最近的表情包气质偏向「{trait_text}」。"
-            f"高频出没时段是{peak_period}，常用标签集中在{tag_text}。"
-            f"在{season}的氛围里，你像一台随时准备发射情绪弹幕的小型雷达，"
-            "看似只是发图，其实每一张都在精准表达当下的心情。"
-        )
-
-    def _generate_llm_personality(
-        self,
-        period_label: str,
-        total_uses: int,
-        peak_period: str,
-        season: str,
-        active_hours: list[tuple[int, int]],
-        top_images: list[tuple[int, str, int]],
-        top_tags: list[tuple[str, int]],
-        fallback_traits: list[str],
-        fallback_description: str,
-    ) -> tuple[list[str], str, bool]:
-        """调用与智能推荐相同的 LLM 配置生成画像；失败自动降级。"""
-        cfg = self.config.get_llm_config()
-        if not (cfg.get("enabled") and cfg.get("base_url") and cfg.get("api_key") and cfg.get("model")):
-            return fallback_traits, fallback_description, False
-
-        llm = LLMService(
-            base_url=cfg["base_url"],
-            api_key=cfg["api_key"],
-            model=cfg["model"],
-        )
-
-        top_tags_text = "、".join(f"{tag}({count}次)" for tag, count in top_tags) or "暂无标签"
-        top_images_text = "、".join(f"{name}({count}次)" for _, name, count in top_images) or "暂无图片"
-        active_hours_text = "、".join(f"{hour}:00({count}次)" for hour, count in active_hours[:5]) or "暂无时段"
-
-        system = (
-            "你是一个幽默、温和、不过度诊断的表情包性格画像助手。"
-            "你只能根据给定的表情包使用统计做轻松娱乐向总结，不能做严肃心理诊断，"
-            "不能输出负面攻击、隐私推断或令人不适的评价。"
-        )
-        prompt = f"""请根据下面的表情包使用统计，生成一份轻松有趣的性格画像。\n\n统计周期：{period_label}\n总使用次数：{total_uses}\n最活跃时段：{peak_period}\n当前季节：{season}\n高频小时：{active_hours_text}\n高频标签：{top_tags_text}\n最常用表情：{top_images_text}\n\n请严格按以下格式输出，不要添加其他内容：\n特征：标签1、标签2、标签3\n描述：一段 80 到 150 字的中文描述，风格活泼有梗，但要友好、简明、不要冒犯用户。\n\n要求：\n- 特征只给 3 到 5 个短标签，每个标签 2 到 6 个字。\n- 描述中要自然结合高频标签、时段特征、季节特征。\n- 不要说“根据数据可知”这种太机械的话。\n- 不要输出 Markdown。\n"""
-
-        try:
-            response = llm.chat(prompt, system=system, temperature=0.85, timeout=30)
-            traits, description = self._parse_llm_personality(response)
-            if traits and description:
-                return traits[:5], description, True
-        except Exception:
-            pass
-
-        return fallback_traits, fallback_description, False
-
-    @staticmethod
-    def _parse_llm_personality(response: str) -> tuple[list[str], str]:
-        """解析 LLM 返回的“特征/描述”格式。"""
-        text = (response or "").strip()
-        if not text:
-            return [], ""
-
-        traits_match = re.search(r"特征[:：]\s*(.+)", text)
-        desc_match = re.search(r"描述[:：]\s*(.+)", text, flags=re.S)
-        if not traits_match or not desc_match:
-            return [], ""
-
-        raw_traits = traits_match.group(1).strip().splitlines()[0]
-        traits = [t.strip(" ，,、;；。") for t in re.split(r"[、,，;；]", raw_traits) if t.strip()]
-        traits = [html.escape(t[:12]) for t in traits if t]
-
-        description = desc_match.group(1).strip()
-        description = re.sub(r"\s+", " ", description)
-        description = html.escape(description[:260])
-        return traits, description
+        return traits
 
     @staticmethod
     def _build_summary(
         period_label: str,
         total_uses: int,
         peak_period: str,
-        season: str,
         top_images: list[tuple[int, str, int]],
         top_tags: list[tuple[str, int]],
         personality_traits: list[str],
-        personality_description: str,
-        ai_enabled: bool,
     ) -> str:
         """生成 HTML 格式的报告正文"""
         lines: list[str] = []
 
-        lines.append(f"<h2>🎭 {html.escape(period_label)}性格画像报告</h2>")
+        lines.append(f"<h2>🎭 {period_label}性格画像报告</h2>")
         lines.append("<p style='font-size:12px;color:#888;'>📊 统计规则:每次双击图片(自动复制到剪贴板)记为 1 次使用</p>")
-        lines.append(
-            f"<p>📊 {html.escape(period_label)}共使用表情 <b>{total_uses}</b> 次，"
-            f"你在 <b>{html.escape(peak_period)}</b> 最为活跃，当前属于 <b>{html.escape(season)}</b> 画像。</p>"
-        )
+        lines.append(f"<p>📊 {period_label}共使用表情 <b>{total_uses}</b> 次，")
+        lines.append(f"你在 <b>{peak_period}</b> 最为活跃。</p>")
 
         if personality_traits:
-            traits_str = "、".join(f"<b>{html.escape(t)}</b>" for t in personality_traits)
-            source = "AI 生成" if ai_enabled else "本地规则"
-            lines.append(f"<h3>🌟 性格特征 <span style='font-size:11px;color:#888;'>({source})</span></h3>")
-            lines.append(f"<p>{traits_str}</p>")
-
-        if personality_description:
-            lines.append("<h3>🧠 画像描述</h3>")
-            lines.append(f"<p>{personality_description}</p>")
+            traits_str = "、".join(f"<b>{t}</b>" for t in personality_traits)
+            lines.append(f"<p>🌟 性格特征：{traits_str}</p>")
 
         if top_images:
             lines.append("<h3>🏆 最爱的表情 Top 5</h3><ol>")
             for _, name, count in top_images:
-                lines.append(f"<li>{html.escape(str(name))}（使用 {count} 次）</li>")
+                lines.append(f"<li>{name}（使用 {count} 次）</li>")
             lines.append("</ol>")
 
         if top_tags:
             lines.append("<h3>🏷️ 高频标签 Top 10</h3><p>")
-            tag_parts = [f"{html.escape(str(tag))}（{count}次）" for tag, count in top_tags]
+            tag_parts = [f"{tag}（{count}次）" for tag, count in top_tags]
             lines.append("、".join(tag_parts))
             lines.append("</p>")
 

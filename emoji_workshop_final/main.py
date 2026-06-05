@@ -23,7 +23,6 @@ from views.recommend_panel import RecommendPanel
 from views.report_view import ReportDialog
 from services.database_service import DatabaseService
 from services.clipboard_monitor import ClipboardMonitor
-from services.api_service import APIService
 from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
@@ -55,7 +54,6 @@ class MainWindow(QMainWindow):
         self._restore_window_state()
 
         self.db_service = DatabaseService()
-        self.api_service = APIService()
 
         self._setup_menu()
         self._setup_ui()
@@ -277,7 +275,6 @@ class MainWindow(QMainWindow):
             self.config.set("window.pos_y", self.y())
 
         self.config.save()
-        self.api_service.cancel_all_downloads()
         event.accept()
 
 

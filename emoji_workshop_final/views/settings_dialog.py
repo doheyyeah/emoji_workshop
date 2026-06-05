@@ -16,7 +16,7 @@ class SettingsDialog(QDialog):
     标签页：
     - 常规：主题、缩略图大小、行为设置
     - 路径：默认文件夹、缓存位置
-    - 网络：超时、并发数、代理
+    - 网络：连接测试
     - 高级：重置配置、统计信息
     """
 
@@ -169,28 +169,6 @@ class SettingsDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        network_group = QGroupBox("网络请求设置")
-        network_layout = QFormLayout()
-
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(5, 120)
-        self.timeout_spin.setSuffix(" 秒")
-        network_layout.addRow("API 超时:", self.timeout_spin)
-
-        self.concurrent_spin = QSpinBox()
-        self.concurrent_spin.setRange(1, 10)
-        network_layout.addRow("最大并发下载:", self.concurrent_spin)
-
-        self.proxy_edit = QLineEdit()
-        self.proxy_edit.setPlaceholderText("http://127.0.0.1:7890")
-        network_layout.addRow("代理地址:", self.proxy_edit)
-        self.proxy_hint = QLabel("留空表示不使用代理")
-        self.proxy_hint.setStyleSheet("color: #aaa; font-size: 11px;")
-        network_layout.addRow("", self.proxy_hint)
-
-        network_group.setLayout(network_layout)
-        layout.addWidget(network_group)
-
         # 网络测试组
         test_group = QGroupBox("连接测试")
         test_layout = QVBoxLayout()
@@ -331,12 +309,6 @@ class SettingsDialog(QDialog):
         self.import_path_edit.setText(self.config.get("paths.last_import_folder", ""))
         self.export_path_edit.setText(self.config.get("paths.last_export_folder", ""))
 
-        # 网络
-        self.timeout_spin.setValue(self.config.get("network.api_timeout", 30))
-        self.concurrent_spin.setValue(self.config.get("network.max_concurrent_downloads", 3))
-        proxy = self.config.get("network.proxy", "")
-        self.proxy_edit.setText(proxy if proxy else "")
-
         llm = self.config.get_llm_config()
         self.llm_enabled_check.setChecked(llm["enabled"])
         self.llm_base_url_edit.setText(llm["base_url"])
@@ -369,12 +341,6 @@ class SettingsDialog(QDialog):
         # 路径
         self.config.set("paths.last_import_folder", self.import_path_edit.text())
         self.config.set("paths.last_export_folder", self.export_path_edit.text())
-
-        # 网络
-        self.config.set("network.api_timeout", self.timeout_spin.value())
-        self.config.set("network.max_concurrent_downloads", self.concurrent_spin.value())
-        proxy = self.proxy_edit.text().strip()
-        self.config.set("network.proxy", proxy if proxy else None)
 
         self.config.set_llm_config(
             base_url=self.llm_base_url_edit.text().strip(),
@@ -455,9 +421,6 @@ class SettingsDialog(QDialog):
 
             def run(self):
                 try:
-                    proxy = ConfigManager().get("network.proxy")
-                    proxies = {"http": proxy, "https": proxy} if proxy else None
-
                     # 测试百度（国内）和 Google（国外）
                     urls = [
                         ("百度", "https://www.baidu.com", 5),
@@ -467,7 +430,7 @@ class SettingsDialog(QDialog):
                     results = []
                     for name, url, timeout in urls:
                         try:
-                            r = requests.get(url, timeout=timeout, proxies=proxies)
+                            r = requests.get(url, timeout=timeout)
                             results.append((f"✅ {name}:正常", True, ""))
                         except Exception as e:
                             results.append((f"❌ {name}:不正常", False, str(e)))

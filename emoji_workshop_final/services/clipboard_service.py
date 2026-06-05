@@ -18,6 +18,11 @@ from PyQt6.QtWidgets import QApplication
 class ClipboardService:
     """统一的剪贴板复制服务,适配静图和动图"""
 
+    # 自定义 MIME 标记：用于标识"由表情工坊内部复制到剪贴板"的图片。
+    # 剪贴板监听服务据此跳过应用内复制（如双击图片），仅对来自应用外部
+    # （例如在其它程序里右键复制）的图片提示是否入库。
+    INTERNAL_MIME_TYPE = "application/x-emoji-workshop-internal"
+
     @staticmethod
     def copy_image(file_path: str) -> bool:
         """复制图片到剪贴板,同时支持文件粘贴(保留动图)和图片粘贴(静态兜底)
@@ -41,6 +46,9 @@ class ClipboardService:
         image = QImage(str(path))
         if not image.isNull():
             mime.setImageData(image)
+
+        # 内部标记:剪贴板监听服务据此跳过应用内复制,避免冗余的入库询问
+        mime.setData(ClipboardService.INTERNAL_MIME_TYPE, b"1")
 
         QApplication.clipboard().setMimeData(mime)
         return True

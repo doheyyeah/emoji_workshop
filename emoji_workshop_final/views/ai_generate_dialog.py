@@ -3,7 +3,6 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QMovie, QPixmap
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -77,13 +76,6 @@ class AIGenerateDialog(QDialog):
 
         settings_group = QGroupBox("生成设置")
         settings_layout = QFormLayout()
-        self.provider_combo = QComboBox()
-        self.provider_display_map = {
-            "doubao": "豆包 Seedream 5.0 Lite",
-            "pollinations": "Pollinations (免费)",
-            "custom": "🛠 自定义",
-        }
-        settings_layout.addRow("AI 提供商:", self.provider_combo)
 
         self.apikey_edit = QLineEdit()
         self.apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -243,58 +235,24 @@ class AIGenerateDialog(QDialog):
         self.save_edit.setText(last_export_folder)
         self.gif_save_edit.setText(last_export_folder)
 
-        enabled_keys = self.ai.get_enabled_providers()
-        self.provider_combo.clear()
-        for key in enabled_keys:
-            self.provider_combo.addItem(self.provider_display_map.get(key, key), userData=key)
-        preferred = self.config.get("ai_providers.active", self.config.get("ai.provider", "doubao"))
-        for i in range(self.provider_combo.count()):
-            if self.provider_combo.itemData(i) == preferred:
-                self.provider_combo.setCurrentIndex(i)
-                break
-        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
-        self.apikey_edit.textChanged.connect(self._on_provider_field_changed)
-        self.base_url_edit.textChanged.connect(self._on_provider_field_changed)
-        self.model_edit.textChanged.connect(self._on_provider_field_changed)
-        self._on_provider_changed()
-
-    def _current_provider(self) -> str:
-        return self.provider_combo.currentData() or "pollinations"
-
-    def _on_provider_changed(self):
-        provider = self._current_provider()
-        cfg = self.config.get_ai_provider_config(provider)
-        self.apikey_edit.blockSignals(True)
-        self.base_url_edit.blockSignals(True)
-        self.model_edit.blockSignals(True)
+        cfg = self.config.get_ai_provider_config("custom")
         self.apikey_edit.setText(cfg.get("api_key", ""))
         self.base_url_edit.setText(cfg.get("base_url", ""))
         self.model_edit.setText(cfg.get("model", ""))
-        self.apikey_edit.blockSignals(False)
-        self.base_url_edit.blockSignals(False)
-        self.model_edit.blockSignals(False)
 
-        is_pollinations = provider == "pollinations"
-        self.apikey_edit.setEnabled(not is_pollinations)
-        self.model_edit.setEnabled(not is_pollinations)
-        self.base_url_edit.setEnabled(provider == "custom")
-        if is_pollinations:
-            self.apikey_edit.setPlaceholderText("免费,无需 Key")
-        elif provider == "doubao":
-            self.apikey_edit.setPlaceholderText("请输入豆包 API Key")
-        else:
-            self.apikey_edit.setPlaceholderText("请输入 API Key")
+        self.apikey_edit.textChanged.connect(self._on_provider_field_changed)
+        self.base_url_edit.textChanged.connect(self._on_provider_field_changed)
+        self.model_edit.textChanged.connect(self._on_provider_field_changed)
 
     def _on_provider_field_changed(self):
-        provider = self._current_provider()
         self.config.set_ai_provider_config(
-            provider,
+            "custom",
             api_key=self.apikey_edit.text().strip(),
             model=self.model_edit.text().strip(),
             base_url=self.base_url_edit.text().strip(),
             enabled=True,
         )
-        self.config.set("ai_providers.active", provider)
+        self.config.set("ai_providers.active", "custom")
 
     def _start_generation(self):
         prompt = self.prompt_edit.toPlainText().strip()
@@ -310,9 +268,8 @@ class AIGenerateDialog(QDialog):
         import time
         filename = f"ai_{hashlib.md5(f'{prompt}:{time.time()}'.encode()).hexdigest()[:8]}.png"
         save_path = str(Path(save_dir) / filename)
-        provider = self.provider_combo.currentData()
-        if provider != "pollinations":
-            self._on_provider_field_changed()
+        provider = "custom"
+        self._on_provider_field_changed()
         self.config.set("ai.provider", provider)
         self.config.set("ai_providers.active", provider)
 

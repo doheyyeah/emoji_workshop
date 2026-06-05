@@ -57,19 +57,16 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self.ai_tab, "🤖 AI 推荐")
 
         # 底部按钮（全部中文）
+        # 注意：不再提供「恢复默认」按钮，避免与「高级 > 危险操作 > 重置所有配置为默认值」
+        # 重复，且降低误触整套配置的风险。重置配置仅在高级标签页的危险操作中保留。
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save |
-            QDialogButtonBox.StandardButton.Cancel |
-            QDialogButtonBox.StandardButton.RestoreDefaults
+            QDialogButtonBox.StandardButton.Cancel
         )
         buttons.button(QDialogButtonBox.StandardButton.Save).setText("保存")
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("取消")
-        buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).setText("恢复默认")
         buttons.accepted.connect(self._save_and_close)
         buttons.rejected.connect(self.reject)
-        buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults).clicked.connect(
-            self._restore_defaults
-        )
         layout.addWidget(buttons)
 
     def _create_general_tab(self) -> QWidget:
@@ -250,23 +247,7 @@ class SettingsDialog(QDialog):
         tab = QWidget()
         layout = QVBoxLayout(tab)
 
-        # 统计信息
-        stats_group = QGroupBox("使用统计")
-        stats_layout = QFormLayout()
-
-        self.stat_imported_label = QLabel("0")
-        stats_layout.addRow("累计导入图片:", self.stat_imported_label)
-
-        self.stat_tags_label = QLabel("0")
-        stats_layout.addRow("累计创建标签:", self.stat_tags_label)
-
-        self.stat_launch_label = QLabel("0")
-        stats_layout.addRow("程序启动次数:", self.stat_launch_label)
-
-        stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group)
-
-        # 危险操作
+        # 危险操作（高级标签页仅保留危险操作；使用统计已并入「数据统计」功能，避免重复展示）
         danger_group = QGroupBox("危险操作")
         danger_layout = QVBoxLayout()
 
@@ -320,11 +301,6 @@ class SettingsDialog(QDialog):
         self.vision_base_url_edit.setText(vision.get("base_url", ""))
         self.vision_api_key_edit.setText(vision.get("api_key", ""))
         self.vision_model_edit.setText(vision.get("model", ""))
-
-        # 统计
-        self.stat_imported_label.setText(str(self.config.get("stats.total_imported", 0)))
-        self.stat_tags_label.setText(str(self.config.get("stats.total_tags_created", 0)))
-        self.stat_launch_label.setText(str(self.config.get("stats.launch_count", 0)))
 
     # ===== 保存设置 =====
 

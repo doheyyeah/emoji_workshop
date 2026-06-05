@@ -49,11 +49,6 @@ class ConfigManager:
                 "last_export_folder": str(Path.home() / "Desktop"),
                 "cache_dir": None           # None 表示使用默认
             },
-            "network": {
-                "api_timeout": 30,
-                "max_concurrent_downloads": 3,
-                "proxy": None               # 代理设置
-            },
             "ai": {
                 "provider": "pollinations",
                 "model": "doubao-seedream-3-0-t2i-250415",

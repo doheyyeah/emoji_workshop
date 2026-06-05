@@ -4,7 +4,8 @@ from typing import List
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QListWidgetItem, QLabel, QPushButton, QFileDialog,
-    QMessageBox, QSplitter, QProgressBar, QComboBox, QAbstractItemView
+    QMessageBox, QSplitter, QProgressBar, QComboBox, QAbstractItemView,
+    QMenu
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QPixmap, QIcon
@@ -120,6 +121,8 @@ class GalleryView(QWidget):
         self.list_widget.setSpacing(10)
         self.list_widget.setMinimumWidth(400)
         self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_widget.customContextMenuRequested.connect(self._show_image_context_menu)
         self.list_widget.itemSelectionChanged.connect(self._on_selection_changed)
         self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
         
@@ -370,6 +373,64 @@ class GalleryView(QWidget):
             main_win = self.window()
             if hasattr(main_win, 'statusBar'):
                 main_win.statusBar().showMessage(msg, 2000)
+
+    def _show_image_context_menu(self, position):
+        """缩略图右键菜单：支持删除选中的图片库记录。"""
+        item = self.list_widget.itemAt(position)
+        if item and not item.isSelected():
+            self.list_widget.setCurrentItem(item)
+
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
+            return
+
+        menu = QMenu(self)
+        delete_action = menu.addAction("🗑️ 删除选中图片")
+        action = menu.exec(self.list_widget.viewport().mapToGlobal(position))
+        if action == delete_action:
+            self._delete_selected_images()
+
+    def _delete_selected_images(self):
+        """删除选中的图片库记录；默认不删除原图文件，只删除库记录和关联标签。"""
+        selected_items = self.list_widget.selectedItems()
+        image_ids = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
+        image_ids = [image_id for image_id in image_ids if image_id is not None]
+        if not image_ids:
+            return
+
+        count = len(image_ids)
+        reply = QMessageBox.question(
+            self,
+            "删除图片记录",
+            f"确定从图片库删除选中的 {count} 张图片吗？\n\n"
+            "这会删除图片库记录和标签关联，不会删除原始图片文件。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted = 0
+        for image_id in image_ids:
+            if self.db.delete_image(image_id):
+                deleted += 1
+
+        self.load_from_database()
+        self.preview_label.clear()
+        self.preview_label.setText("点击左侧图片预览\n或导入文件夹开始")
+        self.preview_label.setStyleSheet("""
+            QLabel {
+                background-color: #2d2d2d;
+                color: #888;
+                border: 2px dashed #555;
+                border-radius: 8px;
+            }
+        """)
+        self.info_label.setText(f"已删除 {deleted} 张图片记录")
+        self.images_selection_changed.emit([])
+        main_win = self.window()
+        if hasattr(main_win, 'statusBar'):
+            main_win.statusBar().showMessage(f"已删除 {deleted} 张图片记录", 2000)
     
     # ------------------------------------------------------------------
     # 拖拽导入（Task 1）

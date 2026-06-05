@@ -73,10 +73,13 @@ class GalleryView(QWidget):
         self.search_input.lineEdit().returnPressed.connect(self.do_search)
 
         self.search_btn = QPushButton("搜索")
+        self.search_btn.setObjectName("primaryButton")
         self.search_btn.clicked.connect(self.do_search)
         self.reset_btn = QPushButton("重置")
+        self.reset_btn.setObjectName("secondaryButton")
         self.reset_btn.clicked.connect(self.load_from_database)
         self.clear_history_btn = QPushButton("清空搜索历史")
+        self.clear_history_btn.setObjectName("secondaryButton")
         self.clear_history_btn.setToolTip("清空搜索历史（只清历史，不清图片）")
         self.clear_history_btn.clicked.connect(self._clear_search_history)
         
@@ -90,10 +93,12 @@ class GalleryView(QWidget):
         toolbar = QHBoxLayout()
         
         self.import_btn = QPushButton("📁 导入文件夹")
+        self.import_btn.setObjectName("primaryButton")
         self.import_btn.setMinimumHeight(32)
         self.import_btn.clicked.connect(self.import_folder)
         
         self.clear_btn = QPushButton("🗑️ 清空")
+        self.clear_btn.setObjectName("dangerButton")
         self.clear_btn.clicked.connect(self.clear_all)
         
         self.stats_label = QLabel("图片: 0 | 总大小: 0 MB | 缓存: 0")
@@ -115,6 +120,7 @@ class GalleryView(QWidget):
         
         # 左侧：缩略图列表（多选模式）
         self.list_widget = QListWidget()
+        self.list_widget.setObjectName("thumbList")
         self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
         self.list_widget.setIconSize(QSize(self.THUMBNAIL_SIZE, self.THUMBNAIL_SIZE))
         self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -128,16 +134,10 @@ class GalleryView(QWidget):
         
         # 右侧：大图预览
         self.preview_label = QLabel("点击左侧图片预览\n或导入文件夹开始")
+        self.preview_label.setObjectName("previewPane")
+        self.preview_label.setProperty("hasImage", False)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumSize(400, 400)
-        self.preview_label.setStyleSheet("""
-            QLabel {
-                background-color: #2d2d2d;
-                color: #888;
-                border: 2px dashed #555;
-                border-radius: 8px;
-            }
-        """)
         
         splitter.addWidget(self.list_widget)
         splitter.addWidget(self.preview_label)
@@ -334,7 +334,9 @@ class GalleryView(QWidget):
                 Qt.TransformationMode.SmoothTransformation
             )
             self.preview_label.setPixmap(scaled)
-            self.preview_label.setStyleSheet("QLabel { border: none; }")
+            self.preview_label.setProperty("hasImage", True)
+            self.preview_label.style().unpolish(self.preview_label)
+            self.preview_label.style().polish(self.preview_label)
         
         size_mb = model.file_size / (1024 * 1024)
         self.info_label.setText(
@@ -418,14 +420,9 @@ class GalleryView(QWidget):
         self.load_from_database()
         self.preview_label.clear()
         self.preview_label.setText("点击左侧图片预览\n或导入文件夹开始")
-        self.preview_label.setStyleSheet("""
-            QLabel {
-                background-color: #2d2d2d;
-                color: #888;
-                border: 2px dashed #555;
-                border-radius: 8px;
-            }
-        """)
+        self.preview_label.setProperty("hasImage", False)
+        self.preview_label.style().unpolish(self.preview_label)
+        self.preview_label.style().polish(self.preview_label)
         self.info_label.setText(f"已删除 {deleted} 张图片记录")
         self.images_selection_changed.emit([])
         main_win = self.window()
@@ -555,14 +552,9 @@ class GalleryView(QWidget):
             self.load_from_database()
             self.preview_label.clear()
             self.preview_label.setText("点击左侧图片预览\n或导入文件夹开始")
-            self.preview_label.setStyleSheet("""
-                QLabel {
-                    background-color: #2d2d2d;
-                    color: #888;
-                    border: 2px dashed #555;
-                    border-radius: 8px;
-                }
-            """)
+            self.preview_label.setProperty("hasImage", False)
+            self.preview_label.style().unpolish(self.preview_label)
+            self.preview_label.style().polish(self.preview_label)
             self.info_label.setText("已清空")
     
     def update_stats(self):

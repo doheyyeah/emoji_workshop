@@ -55,15 +55,17 @@ class StatsPanel(QWidget):
         # === 顶部标题 + 刷新按钮 ===
         header_layout = QHBoxLayout()
         title_label = QLabel("📊 数据统计")
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; padding: 4px 0;")
+        title_label.setObjectName("panelTitle")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
         self.clear_button = QPushButton("🗑 清空历史记录")
+        self.clear_button.setObjectName("dangerButton")
         self.clear_button.setToolTip("清空全部使用历史记录，所有统计将回到初始的空状态")
         self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_button.clicked.connect(self.on_clear_history_clicked)
         header_layout.addWidget(self.clear_button)
         self.refresh_button = QPushButton("🔄 刷新")
+        self.refresh_button.setObjectName("secondaryButton")
         self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_button.clicked.connect(self.on_refresh_clicked)
@@ -114,6 +116,7 @@ class StatsPanel(QWidget):
         # === 表情使用次数排行榜（展示全部已使用表情）===
         layout.addWidget(QLabel("🏆 表情使用次数排行榜"))
         self.ranking_list = QListWidget()
+        self.ranking_list.setObjectName("rankingList")
         self.ranking_list.setMinimumHeight(220)
         # 列表自身不滚动，由外层滚动区域统一滚动，保证全部排名都能看到
         self.ranking_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -123,7 +126,7 @@ class StatsPanel(QWidget):
 
         # === 最近刷新时间 ===
         self.refresh_label = QLabel("")
-        self.refresh_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.refresh_label.setObjectName("hintLabel")
         layout.addWidget(self.refresh_label)
 
         layout.addStretch()
@@ -134,13 +137,6 @@ class StatsPanel(QWidget):
         card = QFrame()
         card.setObjectName("statsCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
-        card.setStyleSheet("""
-            QFrame {
-                background-color: #252526;
-                border-radius: 8px;
-                padding: 6px;
-            }
-        """)
         card.setMinimumHeight(56)
         card.setMaximumHeight(72)
         card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -148,11 +144,11 @@ class StatsPanel(QWidget):
         v.setContentsMargins(8, 6, 8, 6)
         v.setSpacing(2)
         title_lbl = AutoFitLabel(title, min_size=9, max_size=12)
+        title_lbl.setObjectName("statsTitle")
         title_lbl.setWordWrap(True)
-        title_lbl.setStyleSheet("color: #aaa;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         value_lbl = AutoFitLabel(value, min_size=12, max_size=22)
-        value_lbl.setStyleSheet("color: #4a9eff; font-weight: bold;")
+        value_lbl.setObjectName("statsValue")
         value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(title_lbl, 1)
         v.addWidget(value_lbl, 1)

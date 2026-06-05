@@ -68,8 +68,8 @@ class AIGenerateDialog(QDialog):
         self.prompt_edit.textChanged.connect(self._on_prompt_changed)
         prompt_layout.addWidget(self.prompt_edit)
         self.prompt_counter = QLabel("0/200")
+        self.prompt_counter.setObjectName("hintLabel")
         self.prompt_counter.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.prompt_counter.setStyleSheet("color:#aaa;font-size:11px;")
         prompt_layout.addWidget(self.prompt_counter)
         prompt_group.setLayout(prompt_layout)
         layout.addWidget(prompt_group)
@@ -136,9 +136,10 @@ class AIGenerateDialog(QDialog):
         preview_group = QGroupBox("预览")
         preview_layout = QVBoxLayout()
         self.preview_label = QLabel("生成的图片将在这里预览")
+        self.preview_label.setObjectName("previewPane")
+        self.preview_label.setProperty("hasImage", False)
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setMinimumHeight(300)
-        self.preview_label.setStyleSheet("QLabel { background-color: #2d2d2d; color: #888; border: 2px dashed #555; border-radius: 8px; }")
         preview_layout.addWidget(self.preview_label)
 
         self.import_btn = QPushButton("➕ 导入到图片库")
@@ -188,11 +189,10 @@ class AIGenerateDialog(QDialog):
         preview_layout = QVBoxLayout()
 
         self.gif_preview = QLabel("生成的 GIF 将在这里预览")
+        self.gif_preview.setObjectName("previewPaneSmall")
+        self.gif_preview.setProperty("hasImage", False)
         self.gif_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.gif_preview.setMinimumHeight(220)
-        self.gif_preview.setStyleSheet(
-            "QLabel { background-color: #2d2d2d; color: #888; border: 2px dashed #555; border-radius: 8px; }"
-        )
         preview_layout.addWidget(self.gif_preview)
 
         self.gif_save_btn = QPushButton("➕ 保存到库")
@@ -280,6 +280,9 @@ class AIGenerateDialog(QDialog):
         self.import_btn.setEnabled(False)
         self.preview_label.setText("生成中...")
         self.preview_label.setPixmap(QPixmap())
+        self.preview_label.setProperty("hasImage", False)
+        self.preview_label.style().unpolish(self.preview_label)
+        self.preview_label.style().polish(self.preview_label)
         self.status_label.setText("正在连接 AI 并生成图片，请稍候…")
 
         self.worker = self.ai.generate_image(
@@ -325,13 +328,18 @@ class AIGenerateDialog(QDialog):
                 Qt.TransformationMode.SmoothTransformation,
             )
             self.preview_label.setPixmap(scaled)
-            self.preview_label.setStyleSheet("QLabel { border: none; }")
+            self.preview_label.setProperty("hasImage", True)
+            self.preview_label.style().unpolish(self.preview_label)
+            self.preview_label.style().polish(self.preview_label)
         QMessageBox.information(self, "完成", "图片生成成功！")
 
     def _on_error(self, _error_msg: str):
         self._reset_generate_ui()
         self.status_label.setText("⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
         self.preview_label.setText("生成失败")
+        self.preview_label.setProperty("hasImage", False)
+        self.preview_label.style().unpolish(self.preview_label)
+        self.preview_label.style().polish(self.preview_label)
         QMessageBox.critical(self, "生成失败", "⚠️ AI 连接失败：网络不佳或 API Key 无效，请检查设置")
 
     def _start_sticker_generation(self):
@@ -399,18 +407,25 @@ class AIGenerateDialog(QDialog):
         self.sticker_movie = QMovie(gif_path)
         if self.sticker_movie.isValid():
             self.gif_preview.setMovie(self.sticker_movie)
-            self.gif_preview.setStyleSheet("QLabel { border: none; }")
+            self.gif_preview.setProperty("hasImage", True)
+            self.gif_preview.style().unpolish(self.gif_preview)
+            self.gif_preview.style().polish(self.gif_preview)
             self.sticker_movie.start()
         else:
             pixmap = QPixmap(gif_path)
             self.gif_preview.setPixmap(pixmap)
-            self.gif_preview.setStyleSheet("QLabel { border: none; }")
+            self.gif_preview.setProperty("hasImage", True)
+            self.gif_preview.style().unpolish(self.gif_preview)
+            self.gif_preview.style().polish(self.gif_preview)
 
         QMessageBox.information(self, "完成", "动图生成成功！")
 
     def _on_sticker_error(self, message: str):
         self.gif_status_label.setText("生成失败")
         self.gif_preview.setText("生成失败")
+        self.gif_preview.setProperty("hasImage", False)
+        self.gif_preview.style().unpolish(self.gif_preview)
+        self.gif_preview.style().polish(self.gif_preview)
         self.gif_preview.setToolTip(message)
         QMessageBox.critical(self, "生成失败", message)
 

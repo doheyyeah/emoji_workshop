@@ -218,11 +218,6 @@ class SettingsDialog(QDialog):
         self.llm_enabled_check = QCheckBox("启用 LLM 智能推荐")
         form.addRow(self.llm_enabled_check)
 
-        self.llm_provider_combo = QComboBox()
-        self.llm_provider_combo.addItems(["Kimi (Moonshot)", "DeepSeek", "智谱 GLM", "自定义"])
-        self.llm_provider_combo.currentIndexChanged.connect(self._on_llm_provider_changed)
-        form.addRow("提供商预设:", self.llm_provider_combo)
-
         self.llm_base_url_edit = QLineEdit()
         form.addRow("Base URL:", self.llm_base_url_edit)
 
@@ -249,11 +244,6 @@ class SettingsDialog(QDialog):
 
         self.vision_enabled_check = QCheckBox("启用视觉精排（需要视觉模型 API Key）")
         vision_form.addRow(self.vision_enabled_check)
-
-        self.vision_provider_combo = QComboBox()
-        self.vision_provider_combo.addItems(["智谱 GLM-4V-Flash (免费)", "Kimi Vision", "自定义"])
-        self.vision_provider_combo.currentIndexChanged.connect(self._on_vision_provider_changed)
-        vision_form.addRow("提供商预设:", self.vision_provider_combo)
 
         self.vision_base_url_edit = QLineEdit()
         vision_form.addRow("Base URL:", self.vision_base_url_edit)
@@ -352,14 +342,12 @@ class SettingsDialog(QDialog):
         self.llm_base_url_edit.setText(llm["base_url"])
         self.llm_api_key_edit.setText(llm["api_key"])
         self.llm_model_edit.setText(llm["model"])
-        self._sync_llm_provider_combo(llm["provider_name"])
 
         vision = self.config.get_vision_config()
         self.vision_enabled_check.setChecked(vision.get("enabled", False))
         self.vision_base_url_edit.setText(vision.get("base_url", ""))
         self.vision_api_key_edit.setText(vision.get("api_key", ""))
         self.vision_model_edit.setText(vision.get("model", ""))
-        self._sync_vision_provider_combo(vision.get("provider_name", "智谱 GLM-4V-Flash (免费)"))
 
         # 统计
         self.stat_imported_label.setText(str(self.config.get("stats.total_imported", 0)))
@@ -388,14 +376,7 @@ class SettingsDialog(QDialog):
         proxy = self.proxy_edit.text().strip()
         self.config.set("network.proxy", proxy if proxy else None)
 
-        provider_name_map = {
-            "Kimi (Moonshot)": "Kimi",
-            "DeepSeek": "DeepSeek",
-            "智谱 GLM": "智谱 GLM",
-            "自定义": "自定义",
-        }
         self.config.set_llm_config(
-            provider_name=provider_name_map.get(self.llm_provider_combo.currentText(), "自定义"),
             base_url=self.llm_base_url_edit.text().strip(),
             api_key=self.llm_api_key_edit.text().strip(),
             model=self.llm_model_edit.text().strip(),
@@ -403,7 +384,6 @@ class SettingsDialog(QDialog):
         )
 
         self.config.set_vision_config(
-            provider_name=self.vision_provider_combo.currentText(),
             base_url=self.vision_base_url_edit.text().strip(),
             api_key=self.vision_api_key_edit.text().strip(),
             model=self.vision_model_edit.text().strip(),
@@ -512,27 +492,6 @@ class SettingsDialog(QDialog):
         else:
             self.test_result_label.setStyleSheet("color: #ff6b6b;")
 
-    def _sync_llm_provider_combo(self, provider_name: str):
-        mapping = {
-            "Kimi": "Kimi (Moonshot)",
-            "DeepSeek": "DeepSeek",
-            "智谱 GLM": "智谱 GLM",
-            "自定义": "自定义",
-        }
-        self.llm_provider_combo.setCurrentText(mapping.get(provider_name, "自定义"))
-
-    def _on_llm_provider_changed(self, *_):
-        presets = {
-            "Kimi (Moonshot)": ("https://api.moonshot.cn/v1", "moonshot-v1-8k"),
-            "DeepSeek": ("https://api.deepseek.com/v1", "deepseek-chat"),
-            "智谱 GLM": ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
-        }
-        text = self.llm_provider_combo.currentText()
-        if text in presets:
-            base_url, model = presets[text]
-            self.llm_base_url_edit.setText(base_url)
-            self.llm_model_edit.setText(model)
-
     def _test_llm_connection(self):
         from services.llm_service import LLMService
 
@@ -549,20 +508,6 @@ class SettingsDialog(QDialog):
             self.llm_test_result.setText("❌ 连接失败")
             self.llm_test_result.setStyleSheet("color: #ff6b6b;")
             self.llm_test_result.setToolTip(str(exc))
-
-    def _sync_vision_provider_combo(self, provider_name: str):
-        self.vision_provider_combo.setCurrentText(provider_name)
-
-    def _on_vision_provider_changed(self, *_):
-        presets = {
-            "智谱 GLM-4V-Flash (免费)": ("https://open.bigmodel.cn/api/paas/v4", "glm-4v-flash"),
-            "Kimi Vision": ("https://api.moonshot.cn/v1", "moonshot-v1-8k-vision-preview"),
-        }
-        text = self.vision_provider_combo.currentText()
-        if text in presets:
-            base_url, model = presets[text]
-            self.vision_base_url_edit.setText(base_url)
-            self.vision_model_edit.setText(model)
 
     def _test_vision_connection(self):
         from services.vision_service import VisionService

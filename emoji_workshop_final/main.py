@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from PyQt6.QtWidgets import (
     QDialog,
     QApplication, QMainWindow, QHBoxLayout, QWidget,
-    QVBoxLayout, QPushButton, QLabel, QMessageBox, QSplitter
+    QVBoxLayout, QPushButton, QMessageBox, QSplitter
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QSize
@@ -66,8 +66,6 @@ class MainWindow(QMainWindow):
             self.clipboard_monitor.start()
 
         self.statusBar().showMessage("就绪")
-        self.status_tip_label = QLabel("💡 想从网页保存图片? 浏览器右键 → 图片另存为 → 然后拖入本程序")
-        self.statusBar().addPermanentWidget(self.status_tip_label, 1)
 
     def _restore_window_state(self):
         """从配置恢复窗口位置和大小"""

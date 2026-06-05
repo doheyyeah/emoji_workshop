@@ -67,8 +67,10 @@ class RecommendPanel(QWidget):
         # 推荐按钮
         btn_row = QHBoxLayout()
         self.recommend_btn = QPushButton("🔍 推荐")
+        self.recommend_btn.setObjectName("primaryButton")
         self.recommend_btn.clicked.connect(self._do_recommend)
         self.goto_settings_btn = QPushButton("前往设置")
+        self.goto_settings_btn.setObjectName("secondaryButton")
         self.goto_settings_btn.clicked.connect(self._goto_settings)
         self.goto_settings_btn.setVisible(False)
         btn_row.addWidget(self.recommend_btn)
@@ -83,6 +85,7 @@ class RecommendPanel(QWidget):
 
         # 推荐结果列表
         self.result_list = QListWidget()
+        self.result_list.setObjectName("thumbList")
         self.result_list.setViewMode(QListWidget.ViewMode.IconMode)
         self.result_list.setIconSize(QSize(96, 96))
         self.result_list.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -94,6 +97,7 @@ class RecommendPanel(QWidget):
 
         # 提示文字
         self.hint_label = QLabel("双击结果可复制到剪贴板")
+        self.hint_label.setObjectName("hintLabel")
         self.hint_label.setStyleSheet("color: #666; font-size: 10px;")
         self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.hint_label)

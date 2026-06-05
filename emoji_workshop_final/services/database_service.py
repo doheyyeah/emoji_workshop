@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -52,6 +53,17 @@ class DatabaseService:
                     image_id INTEGER REFERENCES images(id) ON DELETE CASCADE,
                     tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
                     PRIMARY KEY (image_id, tag_id)
+                )
+            ''')
+
+            # 性格画像快照（存储最终报告）
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS personality_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    period TEXT,
+                    short_summary TEXT,
+                    profile_json TEXT
                 )
             ''')
             
@@ -360,6 +372,44 @@ class DatabaseService:
             cursor = conn.cursor()
             cursor.execute('DELETE FROM usage_history')
             conn.commit()
+
+    # ===== 性格画像快照存储 =====
+    def save_personality_profile(self, profile: dict, short_summary: str = "", period: str = "") -> int:
+        """保存性格画像快照，返回记录ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO personality_profiles (period, short_summary, profile_json)
+                VALUES (?, ?, ?)
+            ''', (period, short_summary, json.dumps(profile, ensure_ascii=False)))
+            conn.commit()
+            return cursor.lastrowid
+
+    def get_personality_profiles(self, limit: int = 20) -> List[dict]:
+        """获取最近的性格画像快照"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, created_at, period, short_summary, profile_json
+                FROM personality_profiles
+                ORDER BY created_at DESC
+                LIMIT ?
+            ''', (limit,))
+            rows = cursor.fetchall()
+            result = []
+            for r in rows:
+                try:
+                    profile = json.loads(r[4])
+                except Exception:
+                    profile = {}
+                result.append({
+                    "id": r[0],
+                    "created_at": r[1],
+                    "period": r[2],
+                    "short_summary": r[3],
+                    "profile": profile,
+                })
+            return result
 
     @staticmethod
     def _row_to_image_dict(row: tuple) -> dict:

@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from PyQt6.QtWidgets import (
     QDialog,
     QApplication, QMainWindow, QHBoxLayout, QWidget,
-    QVBoxLayout, QPushButton, QMessageBox, QSplitter, QScrollArea
+    QVBoxLayout, QPushButton, QMessageBox, QSplitter
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QSize
@@ -152,31 +152,28 @@ class MainWindow(QMainWindow):
 
         self.main_splitter.addWidget(left_container)
 
-        # 右侧：标签面板 + 智能推荐面板（固定纵向布局，外层支持滚轮查看）
+        # 右侧：标签面板 + 智能推荐面板（垂直 QSplitter）
         self.right_container = QWidget()
         right_layout = QVBoxLayout(self.right_container)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
+
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
 
         self.tag_panel = TagPanel(self.db_service)
         self.tag_panel.setObjectName("tagPanel")
         self.tag_panel.filter_tags_changed.connect(self.on_filter_tags_changed)
         self.tag_panel.tags_updated.connect(self.on_tags_updated)
-        right_layout.addWidget(self.tag_panel)
+        right_splitter.addWidget(self.tag_panel)
 
         self.recommend_panel = RecommendPanel(self.db_service)
         self.recommend_panel.setObjectName("recommendPanel")
         self.recommend_panel.image_selected.connect(self.on_image_selected)
-        right_layout.addWidget(self.recommend_panel)
-        right_layout.addStretch(1)
+        right_splitter.addWidget(self.recommend_panel)
 
-        self.right_scroll_area = QScrollArea()
-        self.right_scroll_area.setWidgetResizable(True)
-        self.right_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
-        self.right_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.right_scroll_area.setWidget(self.right_container)
+        right_splitter.setSizes([300, 300])
+        right_layout.addWidget(right_splitter)
 
-        self.main_splitter.addWidget(self.right_scroll_area)
+        self.main_splitter.addWidget(self.right_container)
         self.main_splitter.setSizes([700, 300])
 
         main_layout.addWidget(self.main_splitter)
@@ -219,8 +216,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_right_panel(self):
         """切换右侧面板显示/隐藏（F9）"""
-        visible = self.right_scroll_area.isVisible()
-        self.right_scroll_area.setVisible(not visible)
+        visible = self.right_container.isVisible()
+        self.right_container.setVisible(not visible)
 
     def _toggle_stats_panel(self):
         """切换统计面板显示/隐藏"""

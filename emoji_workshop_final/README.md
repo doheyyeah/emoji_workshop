@@ -64,12 +64,26 @@ emoji_workshop_final/
 │   ├── database_service.py        # SQLite 数据库服务（单例模式）
 │   ├── thumbnail_service.py       # 缩略图生成与缓存
 │   ├── api_service.py             # 网络下载服务
-│   └── ai_service.py              # AI 图片生成服务
+│   ├── ai_service.py              # AI 图片生成服务（基类/Worker）
+│   ├── vision_service.py          # 简易图像视觉分析（亮度/饱和度）
+│   ├── llm_service.py             # 可选：与大模型交互的封装
+│   ├── personality_service.py     # 性格画像核心逻辑（摘要、雷达图、证据）
+│   ├── clipboard_monitor.py       # 剪贴板监听与导入
+│   └── gif_generator.py           # GIF / 动图合成工具
 │
 ├── utils/                         # 工具层
 │   ├── __init__.py
 │   ├── config_manager.py          # JSON 配置持久化
 │   └── file_scanner.py            # 本地文件扫描
+│
+├── resources/                     # 资源与样式
+│   ├── style.qss                   # 应用统一 QSS 主题
+│   └── UI_GUIDE.md                 # UI 设计指引
+│
+├── tests/                         # 单元/集成测试（若存在）
+│   ├── test_vision_service_parse.py
+│   ├── test_vision_multi_message.py
+│   └── ...
 │
 └── docs/
     └── architecture.md            # 架构说明文档
@@ -139,3 +153,21 @@ python main.py
 - **Utils 层**：无状态工具函数（配置读写、文件扫描）。
 
 详见 [docs/architecture.md](docs/architecture.md)。
+
+---
+
+发布说明（最终版本）
+
+- 已统一现代化界面：resources/style.qss 与 views/* 已统一样式。
+- 性格画像增强：services/personality_service.py，生成简短可读摘要、雷达图（嵌入 HTML）、关键标签证据。
+- 依赖更新：新增 numpy（matplotlib 依赖），请使用 pip install -r requirements.txt 安装依赖。
+- 注意事项：AI 生成提供商位于 services/providers；AIService 基类仅作为接口（子类实现 generate）。
+
+运行与验证
+
+1. 创建并激活虚拟环境，运行：pip install -r requirements.txt
+2. 启动应用：python main.py
+3. 打开“📝 性格画像报告”（Ctrl+R），生成报告并检查雷达图及摘要；测试 AI 生成对话并确保已配置提供商。
+
+建议在提交前手动启动并生成一份报告，检查无异常截图并添加到 README 的“使用截图”部分。
+

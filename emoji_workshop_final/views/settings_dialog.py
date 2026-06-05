@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QTabWidget, QWidget, QGroupBox, QFormLayout,
     QMessageBox, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
 from utils.config_manager import ConfigManager
@@ -24,8 +24,8 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = ConfigManager()
         self.setWindowTitle("⚙️ 应用设置")
-        self.setMinimumSize(760, 600)
-        self.resize(900, 800)
+        self.setMinimumSize(700, 550)
+        self.resize(800, 650)
         self._setup_ui()
         self._load_all_settings()
 
@@ -63,8 +63,14 @@ class SettingsDialog(QDialog):
             QDialogButtonBox.StandardButton.Save |
             QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText("保存")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("取消")
+        save_btn = buttons.button(QDialogButtonBox.StandardButton.Save)
+        cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        if save_btn:
+            save_btn.setText("保存")
+            save_btn.setObjectName("primaryButton")
+        if cancel_btn:
+            cancel_btn.setText("取消")
+            cancel_btn.setObjectName("secondaryButton")
         buttons.accepted.connect(self._save_and_close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -109,12 +115,14 @@ class SettingsDialog(QDialog):
         recent_group = QGroupBox("最近导入的文件夹")
         recent_layout = QVBoxLayout()
         self.recent_list = QListWidget()
+        self.recent_list.setObjectName("recentList")
         self.recent_list.setMaximumHeight(120)
         self.recent_list.itemDoubleClicked.connect(self._on_recent_folder_dblclick)
         recent_layout.addWidget(self.recent_list)
         recent_layout.addWidget(QLabel("（双击可重新导入该文件夹）"))
 
         clear_recent_btn = QPushButton("清空历史")
+        clear_recent_btn.setObjectName("secondaryButton")
         clear_recent_btn.clicked.connect(self._clear_recent)
         recent_layout.addWidget(clear_recent_btn)
 
@@ -137,6 +145,7 @@ class SettingsDialog(QDialog):
         self.import_path_edit.setReadOnly(True)
         import_layout.addWidget(self.import_path_edit)
         import_browse = QPushButton("浏览...")
+        import_browse.setObjectName("secondaryButton")
         import_browse.clicked.connect(self._browse_import)
         import_layout.addWidget(import_browse)
         paths_layout.addRow("默认导入文件夹:", import_layout)
@@ -147,6 +156,7 @@ class SettingsDialog(QDialog):
         self.export_path_edit.setReadOnly(True)
         export_layout.addWidget(self.export_path_edit)
         export_browse = QPushButton("浏览...")
+        export_browse.setObjectName("secondaryButton")
         export_browse.clicked.connect(self._browse_export)
         export_layout.addWidget(export_browse)
         paths_layout.addRow("默认导出文件夹:", export_layout)
@@ -169,6 +179,7 @@ class SettingsDialog(QDialog):
         test_layout.addWidget(self.test_result_label)
 
         test_btn = QPushButton("🌐 测试网络连接")
+        test_btn.setObjectName("secondaryButton")
         test_btn.clicked.connect(self._test_network)
         test_layout.addWidget(test_btn)
 
@@ -199,6 +210,7 @@ class SettingsDialog(QDialog):
         form.addRow("Model:", self.llm_model_edit)
 
         self.llm_test_btn = QPushButton("测试连接")
+        self.llm_test_btn.setObjectName("secondaryButton")
         self.llm_test_btn.clicked.connect(self._test_llm_connection)
         form.addRow("", self.llm_test_btn)
 
@@ -226,6 +238,7 @@ class SettingsDialog(QDialog):
         vision_form.addRow("Model:", self.vision_model_edit)
 
         self.vision_test_btn = QPushButton("测试连接")
+        self.vision_test_btn.setObjectName("secondaryButton")
         self.vision_test_btn.clicked.connect(self._test_vision_connection)
         vision_form.addRow("", self.vision_test_btn)
 
@@ -234,29 +247,6 @@ class SettingsDialog(QDialog):
 
         vision_group.setLayout(vision_form)
         layout.addWidget(vision_group)
-
-        replicate_group = QGroupBox("🎬 动图生成")
-        replicate_form = QFormLayout()
-
-        self.replicate_base_url_edit = QLineEdit()
-        replicate_form.addRow("Base URL:", self.replicate_base_url_edit)
-
-        self.replicate_api_key_edit = QLineEdit()
-        self.replicate_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        replicate_form.addRow("API Key:", self.replicate_api_key_edit)
-
-        self.replicate_model_edit = QLineEdit()
-        replicate_form.addRow("Model:", self.replicate_model_edit)
-
-        self.replicate_test_btn = QPushButton("测试连接")
-        self.replicate_test_btn.clicked.connect(self._test_replicate_connection)
-        replicate_form.addRow("", self.replicate_test_btn)
-
-        self.replicate_test_result = QLabel("未测试")
-        replicate_form.addRow("状态:", self.replicate_test_result)
-
-        replicate_group.setLayout(replicate_form)
-        layout.addWidget(replicate_group)
 
         layout.addStretch()
         return tab
@@ -319,11 +309,6 @@ class SettingsDialog(QDialog):
         self.vision_api_key_edit.setText(vision.get("api_key", ""))
         self.vision_model_edit.setText(vision.get("model", ""))
 
-        replicate = self.config.get_replicate_config()
-        self.replicate_base_url_edit.setText(replicate.get("base_url", ""))
-        self.replicate_api_key_edit.setText(replicate.get("api_key", ""))
-        self.replicate_model_edit.setText(replicate.get("model", ""))
-
     # ===== 保存设置 =====
 
     def _save_and_close(self):
@@ -351,11 +336,6 @@ class SettingsDialog(QDialog):
             api_key=self.vision_api_key_edit.text().strip(),
             model=self.vision_model_edit.text().strip(),
             enabled=self.vision_enabled_check.isChecked(),
-        )
-        self.config.set_replicate_config(
-            base_url=self.replicate_base_url_edit.text().strip(),
-            api_key=self.replicate_api_key_edit.text().strip(),
-            model=self.replicate_model_edit.text().strip(),
         )
 
         # 强制保存
@@ -495,50 +475,3 @@ class SettingsDialog(QDialog):
             self.vision_test_result.setText("❌ 连接失败")
             self.vision_test_result.setStyleSheet("color: #ff6b6b;")
             self.vision_test_result.setToolTip(str(exc))
-
-    def _test_replicate_connection(self):
-        from services.replicate_service import ReplicateService
-
-        class ReplicateTestThread(QThread):
-            result = pyqtSignal(bool, str)
-
-            def __init__(self, base_url: str, api_key: str, model: str, parent=None):
-                super().__init__(parent)
-                self.base_url = base_url
-                self.api_key = api_key
-                self.model = model
-
-            def run(self):
-                try:
-                    service = ReplicateService(
-                        base_url=self.base_url,
-                        api_key=self.api_key,
-                        model=self.model,
-                    )
-                    ok, msg = service.test_connection()
-                    self.result.emit(ok, msg)
-                except Exception as exc:
-                    self.result.emit(False, str(exc))
-
-        self.replicate_test_result.setText("测试中...")
-        self.replicate_test_result.setStyleSheet("")
-        self.replicate_test_result.setToolTip("")
-
-        self.replicate_test_thread = ReplicateTestThread(
-            base_url=self.replicate_base_url_edit.text().strip(),
-            api_key=self.replicate_api_key_edit.text().strip(),
-            model=self.replicate_model_edit.text().strip() or "fofr/sticker-maker",
-            parent=self,
-        )
-        self.replicate_test_thread.result.connect(self._on_replicate_test_result)
-        self.replicate_test_thread.start()
-
-    def _on_replicate_test_result(self, success: bool, message: str):
-        if success:
-            self.replicate_test_result.setText("✅ 连接成功")
-            self.replicate_test_result.setStyleSheet("color: #51cf66;")
-            self.replicate_test_result.setToolTip("")
-        else:
-            self.replicate_test_result.setText("❌ 连接失败")
-            self.replicate_test_result.setStyleSheet("color: #ff6b6b;")
-            self.replicate_test_result.setToolTip(message)

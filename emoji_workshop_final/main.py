@@ -152,26 +152,23 @@ class MainWindow(QMainWindow):
 
         self.main_splitter.addWidget(left_container)
 
-        # 右侧：标签面板 + 智能推荐面板（垂直 QSplitter）
+        # 右侧：标签面板 + 智能推荐面板（固定纵向布局，不允许拖拽改变高度）
         self.right_container = QWidget()
         right_layout = QVBoxLayout(self.right_container)
         right_layout.setContentsMargins(0, 0, 0, 0)
-
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        right_layout.setSpacing(0)
 
         self.tag_panel = TagPanel(self.db_service)
         self.tag_panel.setObjectName("tagPanel")
         self.tag_panel.filter_tags_changed.connect(self.on_filter_tags_changed)
         self.tag_panel.tags_updated.connect(self.on_tags_updated)
-        right_splitter.addWidget(self.tag_panel)
+        right_layout.addWidget(self.tag_panel)
 
         self.recommend_panel = RecommendPanel(self.db_service)
         self.recommend_panel.setObjectName("recommendPanel")
         self.recommend_panel.image_selected.connect(self.on_image_selected)
-        right_splitter.addWidget(self.recommend_panel)
-
-        right_splitter.setSizes([300, 300])
-        right_layout.addWidget(right_splitter)
+        right_layout.addWidget(self.recommend_panel)
+        right_layout.addStretch(1)
 
         self.main_splitter.addWidget(self.right_container)
         self.main_splitter.setSizes([700, 300])

@@ -63,10 +63,9 @@ class ConfigManager:
             },
             "llm": {
                 "enabled": False,
-                "provider_name": "Kimi",
-                "base_url": "https://api.moonshot.cn/v1",
+                "base_url": "",
                 "api_key": "",
-                "model": "moonshot-v1-8k"
+                "model": ""
             },
             "ai_providers": {
                 "active": "doubao",
@@ -90,10 +89,9 @@ class ConfigManager:
             },
             "vision": {
                 "enabled": False,
-                "provider_name": "智谱 GLM-4V-Flash (免费)",
-                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "base_url": "",
                 "api_key": "",
-                "model": "glm-4v-flash"
+                "model": ""
             },
             "behavior": {
                 "auto_save": True,          # 修改后自动保存配置
@@ -210,22 +208,19 @@ class ConfigManager:
         cfg = self.get("llm", {}) or {}
         return {
             "enabled": bool(cfg.get("enabled", False)),
-            "provider_name": cfg.get("provider_name", "Kimi"),
-            "base_url": cfg.get("base_url", "https://api.moonshot.cn/v1"),
+            "base_url": cfg.get("base_url", ""),
             "api_key": cfg.get("api_key", ""),
-            "model": cfg.get("model", "moonshot-v1-8k"),
+            "model": cfg.get("model", ""),
         }
 
     def set_llm_config(
         self,
-        provider_name: str,
         base_url: str,
         api_key: str,
         model: str,
         enabled: bool,
     ) -> None:
         """设置 LLM 配置"""
-        self.set("llm.provider_name", provider_name)
         self.set("llm.base_url", base_url)
         self.set("llm.api_key", api_key)
         self.set("llm.model", model)
@@ -241,23 +236,20 @@ class ConfigManager:
         cfg = self.get("vision", {}) or {}
         return {
             "enabled": bool(cfg.get("enabled", False)),
-            "provider_name": cfg.get("provider_name", "智谱 GLM-4V-Flash (免费)"),
-            "base_url": cfg.get("base_url", "https://open.bigmodel.cn/api/paas/v4"),
+            "base_url": cfg.get("base_url", ""),
             "api_key": cfg.get("api_key", ""),
-            "model": cfg.get("model", "glm-4v-flash"),
+            "model": cfg.get("model", ""),
         }
 
     def set_vision_config(
         self,
         enabled: bool,
-        provider_name: str,
         base_url: str,
         api_key: str,
         model: str,
     ) -> None:
         """设置视觉精排配置"""
         self.set("vision.enabled", enabled)
-        self.set("vision.provider_name", provider_name)
         self.set("vision.base_url", base_url)
         self.set("vision.api_key", api_key)
         self.set("vision.model", model)

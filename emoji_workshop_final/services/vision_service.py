@@ -1,10 +1,7 @@
 """视觉精排服务
 
 使用 OpenAI 兼容的视觉模型（如智谱 GLM-4V-Flash）对候选图片进行视觉精排。
-
-预设提供商:
-- 智谱 GLM-4V-Flash (免费): base_url=https://open.bigmodel.cn/api/paas/v4, model=glm-4v-flash
-- Kimi 视觉: base_url=https://api.moonshot.cn/v1, model=moonshot-v1-8k-vision-preview
+通过 Base URL、API Key、Model 自行配置视觉模型。
 """
 
 from __future__ import annotations
@@ -21,18 +18,6 @@ from PIL import Image
 
 class VisionService:
     """OpenAI 兼容视觉模型客户端，支持图片精排"""
-
-    # 预设提供商
-    PRESETS = {
-        "智谱 GLM-4V-Flash (免费)": {
-            "base_url": "https://open.bigmodel.cn/api/paas/v4",
-            "model": "glm-4v-flash",
-        },
-        "Kimi Vision": {
-            "base_url": "https://api.moonshot.cn/v1",
-            "model": "moonshot-v1-8k-vision-preview",
-        },
-    }
 
     MAX_IMAGES = 5  # 单次请求最多发送图片数，避免请求过大与兼容性问题
 

@@ -234,22 +234,97 @@
     background: #ddd;
 }
 
-/* 可供 UI 外包精修的关键控件 */
-#statsCard {
-    min-height: 120px;
-}
-#primaryButton {
+/* ===== Incremental shared objectName styles ===== */
+QPushButton#primaryButton {
     font-weight: 600;
 }
-#secondaryButton {
+#mainWindow[theme="dark"] QPushButton#secondaryButton,
+#reportDialog QPushButton#secondaryButton {
+    background-color: #5f6b76;
+}
+#mainWindow[theme="light"] QPushButton#secondaryButton {
     background-color: #6c757d;
 }
-#dangerButton {
+#mainWindow[theme="dark"] QPushButton#dangerButton,
+#reportDialog QPushButton#dangerButton {
+    background-color: #c53946;
+}
+#mainWindow[theme="light"] QPushButton#dangerButton {
     background-color: #dc3545;
 }
+
+#mainWindow[theme="dark"] QLabel#previewPane,
+#mainWindow[theme="dark"] QLabel#previewPaneSmall {
+    background-color: #2d2d2d;
+    color: #888;
+    border: 2px dashed #555;
+    border-radius: 8px;
+}
+#mainWindow[theme="light"] QLabel#previewPane,
+#mainWindow[theme="light"] QLabel#previewPaneSmall {
+    background-color: #ffffff;
+    color: #666;
+    border: 1px dashed #c9ccd2;
+    border-radius: 8px;
+}
+QLabel#previewPane[hasImage="true"],
+QLabel#previewPaneSmall[hasImage="true"] {
+    border: none;
+    background: transparent;
+}
+
+#mainWindow[theme="dark"] QListWidget#thumbList,
+#mainWindow[theme="dark"] QListWidget#tagList,
+#mainWindow[theme="dark"] QListWidget#imageTagList,
+#mainWindow[theme="dark"] QListWidget#rankingList,
+#reportDialog QTextBrowser#reportBrowser {
+    background-color: #252526;
+    border: 1px solid #3e3e42;
+    border-radius: 8px;
+}
+#mainWindow[theme="light"] QListWidget#thumbList,
+#mainWindow[theme="light"] QListWidget#tagList,
+#mainWindow[theme="light"] QListWidget#imageTagList,
+#mainWindow[theme="light"] QListWidget#rankingList {
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+#statsCard {
+    min-height: 56px;
+    border-radius: 8px;
+    padding: 6px;
+}
+#mainWindow[theme="dark"] #statsCard {
+    background-color: #252526;
+    border: 1px solid #3e3e42;
+}
+#mainWindow[theme="light"] #statsCard {
+    background-color: #ffffff;
+    border: 1px solid #ddd;
+}
+#statsTitle {
+    color: #888;
+}
+#statsValue {
+    color: #4a9eff;
+    font-weight: 700;
+}
+
+#panelTitle {
+    font-size: 14px;
+    font-weight: 700;
+    padding: 4px 0;
+}
+#hintLabel,
 #networkStatusLabel {
-    font-size: 12px;
-    padding: 0 4px;
+    color: #888;
+    font-size: 11px;
+}
+#errorLabel {
+    color: #ff6b6b;
+    font-size: 11px;
 }
 #statsRuleLabel {
     color: #888;

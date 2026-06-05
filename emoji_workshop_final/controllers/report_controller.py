@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 
 from services.database_service import DatabaseService
 from services.llm_service import LLMService
+from services.personality_service import PersonalityService
 from utils.config_manager import ConfigManager
 
 
@@ -70,6 +71,7 @@ class ReportController:
     def __init__(self, db_service: DatabaseService, config_manager: ConfigManager | None = None) -> None:
         self.db = db_service
         self.config = config_manager or ConfigManager()
+        self.personality_service = PersonalityService()
         # 确保 usage_history 表存在
         self.db.ensure_usage_history_table()
 
@@ -131,11 +133,15 @@ class ReportController:
                 tag_counter[tag_name] += image_counter[img_id]
         top_tags = tag_counter.most_common(10)
 
-        # 兜底规则画像
-        fallback_traits = self._infer_personality(tag_counter, peak_period, total_uses)
-        fallback_description = self._build_fallback_description(
-            peak_period, season, top_tags, fallback_traits
+        # 本地画像层（雷达图 + 证据标签 + 兜底人格描述）
+        local_profile = self.personality_service.analyze(
+            tag_counter=tag_counter,
+            top_images=top_images,
+            peak_period=peak_period,
+            season=season,
         )
+        fallback_traits = local_profile["fallback_traits"]
+        fallback_description = local_profile["fallback_description"]
 
         # 优先尝试 LLM 画像；失败则使用兜底画像
         ai_traits, ai_description, ai_enabled = self._generate_llm_personality(
@@ -156,11 +162,13 @@ class ReportController:
             total_uses=total_uses,
             peak_period=peak_period,
             season=season,
+            active_hours=active_hours,
             top_images=top_images,
             top_tags=top_tags,
             personality_traits=ai_traits,
             personality_description=ai_description,
             ai_enabled=ai_enabled,
+            local_profile=local_profile,
         )
 
         return {
@@ -174,6 +182,11 @@ class ReportController:
             "personality_traits": ai_traits,
             "personality_description": ai_description,
             "ai_enabled": ai_enabled,
+            "dimensions": local_profile["dimensions"],
+            "evidence_tags": local_profile["evidence_tags"],
+            "radar_chart_data_uri": local_profile["radar_chart_data_uri"],
+            "fallback_traits": local_profile["fallback_traits"],
+            "fallback_description": local_profile["fallback_description"],
             "summary_text": summary_text,
         }
 
@@ -212,6 +225,11 @@ class ReportController:
             "personality_traits": [],
             "personality_description": "",
             "ai_enabled": False,
+            "dimensions": {},
+            "evidence_tags": [],
+            "radar_chart_data_uri": "",
+            "fallback_traits": [],
+            "fallback_description": "",
             "summary_text": f"<p>{period_label}暂无使用记录。<br>开始使用表情包，这里会生成你的专属性格画像！✨</p>",
         }
 
@@ -331,11 +349,13 @@ class ReportController:
         total_uses: int,
         peak_period: str,
         season: str,
+        active_hours: list[tuple[int, int]],
         top_images: list[tuple[int, str, int]],
         top_tags: list[tuple[str, int]],
         personality_traits: list[str],
         personality_description: str,
         ai_enabled: bool,
+        local_profile: dict,
     ) -> str:
         """生成 HTML 格式的报告正文"""
         lines: list[str] = []
@@ -356,6 +376,41 @@ class ReportController:
         if personality_description:
             lines.append("<h3>🧠 画像描述</h3>")
             lines.append(f"<p>{personality_description}</p>")
+
+        # 本地数据画像层：与 LLM 共存
+        dimensions = local_profile.get("dimensions", {}) or {}
+        radar_chart = local_profile.get("radar_chart_data_uri", "") or ""
+        evidence_tags = local_profile.get("evidence_tags", []) or []
+        lines.append("<h3>🕸️ 数据画像维度</h3>")
+        if radar_chart:
+            lines.append(
+                "<p style='margin:8px 0 12px 0;'>"
+                "<img alt='画像雷达图' src='"
+                + html.escape(radar_chart, quote=True)
+                + "' style='max-width:520px;width:100%;'/>"
+                "</p>"
+            )
+        elif dimensions:
+            dim_parts = [f"{html.escape(dim)}：{score}" for dim, score in dimensions.items()]
+            lines.append("<p>、".join(dim_parts) + "</p>")
+        else:
+            lines.append("<p>暂无可用数据画像维度。</p>")
+
+        lines.append("<h3>🔎 关键证据</h3>")
+        if evidence_tags:
+            evidence_parts = [
+                f"{html.escape(str(tag))}（{int(round(weight * 100))}%）"
+                for tag, weight in evidence_tags
+            ]
+            lines.append("<p>高频标签： " + "、".join(evidence_parts) + "</p>")
+        else:
+            lines.append("<p>高频标签：暂无</p>")
+
+        if active_hours:
+            hour_parts = [f"{hour}:00（{count}次）" for hour, count in active_hours[:5]]
+            lines.append("<p>活跃时段： " + "、".join(hour_parts) + "</p>")
+        else:
+            lines.append("<p>活跃时段：暂无</p>")
 
         if top_images:
             lines.append("<h3>🏆 最爱的表情 Top 5</h3><ol>")

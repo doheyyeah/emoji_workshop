@@ -55,7 +55,7 @@ class RecommendPanel(QWidget):
 
         # 标题
         title = QLabel("🎯 智能推荐")
-        title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 4px 0;")
+        title.setObjectName("panelTitle")
         layout.addWidget(title)
 
         # 输入框
@@ -67,8 +67,10 @@ class RecommendPanel(QWidget):
         # 推荐按钮
         btn_row = QHBoxLayout()
         self.recommend_btn = QPushButton("🔍 推荐")
+        self.recommend_btn.setObjectName("primaryButton")
         self.recommend_btn.clicked.connect(self._do_recommend)
         self.goto_settings_btn = QPushButton("前往设置")
+        self.goto_settings_btn.setObjectName("secondaryButton")
         self.goto_settings_btn.clicked.connect(self._goto_settings)
         self.goto_settings_btn.setVisible(False)
         btn_row.addWidget(self.recommend_btn)
@@ -76,13 +78,14 @@ class RecommendPanel(QWidget):
         layout.addLayout(btn_row)
 
         self.error_label = QLabel("⚠️ 请先在 设置 → AI 推荐 中配置 LLM API Key")
+        self.error_label.setObjectName("errorLabel")
         self.error_label.setWordWrap(True)
-        self.error_label.setStyleSheet("color: #ff6b6b; font-size: 11px;")
         self.error_label.setVisible(not self.config.is_llm_enabled())
         layout.addWidget(self.error_label)
 
         # 推荐结果列表
         self.result_list = QListWidget()
+        self.result_list.setObjectName("thumbList")
         self.result_list.setViewMode(QListWidget.ViewMode.IconMode)
         self.result_list.setIconSize(QSize(96, 96))
         self.result_list.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -94,7 +97,7 @@ class RecommendPanel(QWidget):
 
         # 提示文字
         self.hint_label = QLabel("双击结果可复制到剪贴板")
-        self.hint_label.setStyleSheet("color: #666; font-size: 10px;")
+        self.hint_label.setObjectName("hintLabel")
         self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.hint_label)
 

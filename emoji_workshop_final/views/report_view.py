@@ -71,6 +71,7 @@ class ReportDialog(QDialog):
         toolbar.addWidget(self.period_combo)
 
         self.generate_btn = QPushButton("📊 生成报告")
+        self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.clicked.connect(self._generate)
         toolbar.addWidget(self.generate_btn)
 
@@ -79,6 +80,7 @@ class ReportDialog(QDialog):
 
         # --- 报告展示区 ---
         self.browser = QTextBrowser()
+        self.browser.setObjectName("reportBrowser")
         self.browser.setOpenExternalLinks(False)
         self.browser.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -93,12 +95,14 @@ class ReportDialog(QDialog):
         btn_row = QHBoxLayout()
 
         self.save_btn = QPushButton("💾 保存为图片")
+        self.save_btn.setObjectName("secondaryButton")
         self.save_btn.clicked.connect(self._save_as_image)
         btn_row.addWidget(self.save_btn)
 
         btn_row.addStretch()
 
         close_btn = QPushButton("关闭")
+        close_btn.setObjectName("secondaryButton")
         close_btn.clicked.connect(self.close)
         btn_row.addWidget(close_btn)
 

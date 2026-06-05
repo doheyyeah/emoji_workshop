@@ -86,11 +86,6 @@ class SettingsDialog(QDialog):
         self.thumb_size_spin.setSuffix(" px")
         appearance_layout.addRow("缩略图大小:", self.thumb_size_spin)
 
-        self.grid_spacing_spin = QSpinBox()
-        self.grid_spacing_spin.setRange(0, 30)
-        self.grid_spacing_spin.setSuffix(" px")
-        appearance_layout.addRow("网格间距:", self.grid_spacing_spin)
-
         appearance_group.setLayout(appearance_layout)
         layout.addWidget(appearance_group)
 
@@ -274,7 +269,6 @@ class SettingsDialog(QDialog):
         # 常规
         self.theme_combo.setCurrentText(self.config.get("ui.theme", "dark"))
         self.thumb_size_spin.setValue(self.config.get("ui.thumbnail_size", 128))
-        self.grid_spacing_spin.setValue(self.config.get("ui.grid_spacing", 10))
         self.auto_save_check.setChecked(self.config.get("behavior.auto_save", True))
         self.confirm_delete_check.setChecked(self.config.get("behavior.confirm_delete", True))
         self.clipboard_monitor_check.setChecked(
@@ -309,7 +303,6 @@ class SettingsDialog(QDialog):
         # 常规
         self.config.set("ui.theme", self.theme_combo.currentText())
         self.config.set("ui.thumbnail_size", self.thumb_size_spin.value())
-        self.config.set("ui.grid_spacing", self.grid_spacing_spin.value())
         self.config.set("behavior.auto_save", self.auto_save_check.isChecked())
         self.config.set("behavior.confirm_delete", self.confirm_delete_check.isChecked())
         self.config.set("behavior.clipboard_monitor_enabled", self.clipboard_monitor_check.isChecked())

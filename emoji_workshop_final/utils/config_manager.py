@@ -41,7 +41,6 @@ class ConfigManager:
             "ui": {
                 "theme": "dark",           # dark / light
                 "thumbnail_size": 128,      # 缩略图尺寸
-                "grid_spacing": 10,         # 网格间距
                 "preview_panel_width": 500  # 预览面板宽度
             },
             "paths": {

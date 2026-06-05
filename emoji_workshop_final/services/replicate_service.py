@@ -5,7 +5,7 @@ import requests
 
 try:
     from PyQt6.QtCore import QThread, pyqtSignal
-except Exception:  # pragma: no cover - 测试环境无 PyQt6 时回退
+except ImportError:  # pragma: no cover - 测试环境无 PyQt6 时的回退
     class _FallbackSignal:
         def emit(self, *_args, **_kwargs):
             return None

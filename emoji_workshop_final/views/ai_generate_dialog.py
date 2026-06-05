@@ -411,7 +411,6 @@ class AIGenerateDialog(QDialog):
         service = ReplicateService(base_url=base_url, api_key=api_key, model=model)
         self.gif_generate_btn.setEnabled(False)
         self.gif_save_btn.setEnabled(False)
-        self.gif_preview.setPixmap(QPixmap())
         self.gif_preview.setText("正在生成 GIF...")
         self.gif_preview.setToolTip("")
         self.gif_status_label.setText("正在提交任务…")
@@ -440,6 +439,7 @@ class AIGenerateDialog(QDialog):
 
         if self.sticker_movie:
             self.sticker_movie.stop()
+            self.sticker_movie = None
         self.sticker_movie = QMovie(gif_path)
         if self.sticker_movie.isValid():
             self.gif_preview.setMovie(self.sticker_movie)

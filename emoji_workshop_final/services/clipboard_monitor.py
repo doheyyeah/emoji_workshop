@@ -6,6 +6,8 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import QApplication
 
+from services.clipboard_service import ClipboardService
+
 
 class ClipboardMonitor(QObject):
     new_image_detected = pyqtSignal(QImage)
@@ -31,7 +33,6 @@ class ClipboardMonitor(QObject):
             return
         # 跳过表情工坊内部复制的图片（如双击图片库 / 智能推荐里的图片），
         # 仅对来自应用外部（在其它程序里复制）的图片提示是否入库。
-        from services.clipboard_service import ClipboardService
         if mime.hasFormat(ClipboardService.INTERNAL_MIME_TYPE):
             # 记录其哈希，避免后续相同图片再次触发提示
             image = self.clipboard.image()

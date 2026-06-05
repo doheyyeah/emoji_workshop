@@ -391,7 +391,12 @@ class ReportController:
                 "</p>"
             )
         elif dimensions:
-            dim_parts = [f"{html.escape(dim)}：{score}" for dim, score in dimensions.items()]
+            sorted_dimensions = sorted(
+                dimensions.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            dim_parts = [f"{html.escape(dim)}：{score}" for dim, score in sorted_dimensions]
             lines.append("<p>、".join(dim_parts) + "</p>")
         else:
             lines.append("<p>暂无可用数据画像维度。</p>")

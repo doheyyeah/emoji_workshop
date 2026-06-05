@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QTabWidget, QWidget, QGroupBox, QFormLayout,
     QMessageBox, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from utils.config_manager import ConfigManager
@@ -235,6 +235,29 @@ class SettingsDialog(QDialog):
         vision_group.setLayout(vision_form)
         layout.addWidget(vision_group)
 
+        replicate_group = QGroupBox("🎬 动图生成")
+        replicate_form = QFormLayout()
+
+        self.replicate_base_url_edit = QLineEdit()
+        replicate_form.addRow("Base URL:", self.replicate_base_url_edit)
+
+        self.replicate_api_key_edit = QLineEdit()
+        self.replicate_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        replicate_form.addRow("API Key:", self.replicate_api_key_edit)
+
+        self.replicate_model_edit = QLineEdit()
+        replicate_form.addRow("Model:", self.replicate_model_edit)
+
+        self.replicate_test_btn = QPushButton("测试连接")
+        self.replicate_test_btn.clicked.connect(self._test_replicate_connection)
+        replicate_form.addRow("", self.replicate_test_btn)
+
+        self.replicate_test_result = QLabel("未测试")
+        replicate_form.addRow("状态:", self.replicate_test_result)
+
+        replicate_group.setLayout(replicate_form)
+        layout.addWidget(replicate_group)
+
         layout.addStretch()
         return tab
 
@@ -296,6 +319,11 @@ class SettingsDialog(QDialog):
         self.vision_api_key_edit.setText(vision.get("api_key", ""))
         self.vision_model_edit.setText(vision.get("model", ""))
 
+        replicate = self.config.get_replicate_config()
+        self.replicate_base_url_edit.setText(replicate.get("base_url", ""))
+        self.replicate_api_key_edit.setText(replicate.get("api_key", ""))
+        self.replicate_model_edit.setText(replicate.get("model", "fofr/sticker-maker"))
+
     # ===== 保存设置 =====
 
     def _save_and_close(self):
@@ -323,6 +351,11 @@ class SettingsDialog(QDialog):
             api_key=self.vision_api_key_edit.text().strip(),
             model=self.vision_model_edit.text().strip(),
             enabled=self.vision_enabled_check.isChecked(),
+        )
+        self.config.set_replicate_config(
+            base_url=self.replicate_base_url_edit.text().strip(),
+            api_key=self.replicate_api_key_edit.text().strip(),
+            model=self.replicate_model_edit.text().strip() or "fofr/sticker-maker",
         )
 
         # 强制保存
@@ -462,3 +495,50 @@ class SettingsDialog(QDialog):
             self.vision_test_result.setText("❌ 连接失败")
             self.vision_test_result.setStyleSheet("color: #ff6b6b;")
             self.vision_test_result.setToolTip(str(exc))
+
+    def _test_replicate_connection(self):
+        from services.replicate_service import ReplicateService
+
+        class ReplicateTestThread(QThread):
+            result = pyqtSignal(bool, str)
+
+            def __init__(self, base_url: str, api_key: str, model: str, parent=None):
+                super().__init__(parent)
+                self.base_url = base_url
+                self.api_key = api_key
+                self.model = model
+
+            def run(self):
+                try:
+                    service = ReplicateService(
+                        base_url=self.base_url,
+                        api_key=self.api_key,
+                        model=self.model,
+                    )
+                    ok, msg = service.test_connection()
+                    self.result.emit(ok, msg)
+                except Exception as exc:
+                    self.result.emit(False, str(exc))
+
+        self.replicate_test_result.setText("测试中...")
+        self.replicate_test_result.setStyleSheet("")
+        self.replicate_test_result.setToolTip("")
+
+        self.replicate_test_thread = ReplicateTestThread(
+            base_url=self.replicate_base_url_edit.text().strip(),
+            api_key=self.replicate_api_key_edit.text().strip(),
+            model=self.replicate_model_edit.text().strip() or "fofr/sticker-maker",
+            parent=self,
+        )
+        self.replicate_test_thread.result.connect(self._on_replicate_test_result)
+        self.replicate_test_thread.start()
+
+    def _on_replicate_test_result(self, success: bool, message: str):
+        if success:
+            self.replicate_test_result.setText("✅ 连接成功")
+            self.replicate_test_result.setStyleSheet("color: #51cf66;")
+            self.replicate_test_result.setToolTip("")
+        else:
+            self.replicate_test_result.setText("❌ 连接失败")
+            self.replicate_test_result.setStyleSheet("color: #ff6b6b;")
+            self.replicate_test_result.setToolTip(message)

@@ -114,6 +114,75 @@ class LLMService:
             "reason": "",
         }
 
+    def select_candidate_images(
+        self,
+        context: str,
+        image_summaries: list[dict],
+        available_tags: list[str],
+        candidate_count: int = 20,
+    ) -> dict:
+        """让 LLM 只做候选范围筛选（不做最终排序）"""
+        summaries = image_summaries[:80]
+        summary_lines = []
+        valid_ids: set[int] = set()
+        for item in summaries:
+            image_id = item.get("id")
+            if image_id is None:
+                continue
+            try:
+                normalized_id = int(image_id)
+            except (TypeError, ValueError):
+                continue
+            valid_ids.add(normalized_id)
+            name = item.get("name", "")
+            tags = item.get("tags", [])
+            summary_lines.append(f"- id={normalized_id}, name={name}, tags={','.join(tags)}")
+
+        if not summary_lines:
+            return {"image_ids": [], "tags": [], "keywords": [], "reason": ""}
+
+        system = (
+            "你是表情包候选筛选助手。"
+            "你只能基于用户输入、表情包名称、已有标签筛选候选范围。"
+            "不要做最终排序判断，不要假装看到了图片内容。"
+        )
+        prompt = (
+            f"用户输入/聊天上下文:\n{context}\n\n"
+            f"可用标签:\n{', '.join(available_tags)}\n\n"
+            "候选图片（id/name/tags）:\n"
+            + "\n".join(summary_lines)
+            + "\n\n请严格输出 JSON（不要额外解释），格式：\n"
+            "{\n"
+            '  "image_ids": [1, 2, 3],\n'
+            '  "tags": ["标签1", "标签2"],\n'
+            '  "keywords": ["关键词1", "关键词2"],\n'
+            '  "reason": "简短说明"\n'
+            "}\n\n"
+            f"要求：\n"
+            f"1) image_ids 最多 {candidate_count} 个，且必须来自上面的 id；\n"
+            f"2) tags 只能从可用标签中选择，最多 8 个；\n"
+            f"3) keywords 最多 8 个；\n"
+            f"4) 只做候选筛选，不做最终排序；\n"
+            f"5) 用户输入的关键词/描述/上下文是最高优先级。"
+        )
+        response = self.chat(prompt, system=system, temperature=0.15, timeout=45)
+        parsed = self._parse_analysis_response(
+            response,
+            available_tags,
+            top_k=max(1, candidate_count),
+        )
+
+        filtered_ids: list[int] = []
+        for image_id in parsed["image_ids"]:
+            if image_id not in valid_ids or image_id in filtered_ids:
+                continue
+            filtered_ids.append(image_id)
+
+        parsed["image_ids"] = filtered_ids[:candidate_count]
+        parsed["tags"] = parsed["tags"][:8]
+        parsed["keywords"] = parsed["keywords"][:8]
+        return parsed
+
     @staticmethod
     def _parse_analysis_response(text: str, available_tags: list[str], top_k: int) -> dict:
         payload = LLMService._extract_json_payload(text)

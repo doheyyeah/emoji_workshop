@@ -19,7 +19,7 @@ from PIL import Image
 class VisionService:
     """OpenAI 兼容视觉模型客户端，支持图片精排"""
 
-    MAX_IMAGES = 10  # 单次请求最多发送图片数，避免请求过大与兼容性问题
+    MAX_IMAGES = 30  # 支持对完整候选池做精排，同时控制请求体大小
 
     def __init__(self, base_url: str, api_key: str, model: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -54,8 +54,10 @@ class VisionService:
         if not self.api_key:
             raise RuntimeError("视觉精排未配置 API Key")
 
-        # 截取最多 MAX_IMAGES 张候选
-        limit = max_images if (max_images and max_images > 0) else self.MAX_IMAGES
+        # 截取候选，默认上限 MAX_IMAGES，允许调用方显式缩小范围
+        limit = self.MAX_IMAGES
+        if max_images and max_images > 0:
+            limit = min(max_images, self.MAX_IMAGES)
         candidates = candidate_images[:limit]
         if not candidates:
             return []
@@ -141,11 +143,17 @@ class VisionService:
                     {
                         "type": "text",
                         "text": (
-                            f"用户在聊天中说:\"{context}\"\n\n"
-                            f"上面给你 {len(messages)} 张候选表情包(编号 1 到 {len(messages)}),"
-                            f"请结合图片视觉内容、名称、标签，挑出最适合作为回应的 {top_k} 个,"
-                            f"按合适程度降序。\n\n"
-                            "严格只返回编号,用英文逗号分隔,不要任何其他文字。\n例如:3,1,2"
+                            f"用户输入/聊天上下文/关键词描述:\n{context}\n\n"
+                            f"上面共有 {len(messages)} 张候选表情包(编号 1 到 {len(messages)})。\n\n"
+                            "请分析每张图片的真实视觉内容，包括人物表情、动作、画面文字、"
+                            "情绪氛围和梗图语义，再结合名称和标签评估契合度。\n\n"
+                            "排序规则：\n"
+                            "1) 用户输入的关键词、描述、上下文是最高优先级；\n"
+                            "2) 图片真实内容比名称和标签更重要；\n"
+                            "3) 如果真实内容与用户输入不匹配，即使标签相似也要降低排名；\n"
+                            f"4) 返回最适合作为回应的 {top_k} 个编号，按匹配度从高到低。\n\n"
+                            "严格只返回编号，用英文逗号分隔，不要任何解释。\n"
+                            "例如:3,1,2"
                         ),
                     }
                 ],

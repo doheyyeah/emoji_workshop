@@ -66,20 +66,22 @@ class GalleryView(QWidget):
         self.search_input = QComboBox()
         self.search_input.setEditable(True)
         self.search_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.search_input.setMinimumHeight(32)
         self.search_input.lineEdit().setPlaceholderText("🔍 搜索表情包...")
-        # 加载搜索历史
-        for kw in self.config.get_search_history():
-            self.search_input.addItem(kw)
         self.search_input.lineEdit().returnPressed.connect(self.do_search)
+        self._refresh_search_history()
 
-        self.search_btn = QPushButton("搜索")
+        self.search_btn = QPushButton("🔍 搜索")
         self.search_btn.setObjectName("primaryButton")
+        self.search_btn.setMinimumHeight(32)
         self.search_btn.clicked.connect(self.do_search)
-        self.reset_btn = QPushButton("重置")
+        self.reset_btn = QPushButton("🔄 重置")
         self.reset_btn.setObjectName("primaryButton")
-        self.reset_btn.clicked.connect(self.load_from_database)
-        self.clear_history_btn = QPushButton("清空搜索历史")
+        self.reset_btn.setMinimumHeight(32)
+        self.reset_btn.clicked.connect(self.reset_search)
+        self.clear_history_btn = QPushButton("🧹 清空历史")
         self.clear_history_btn.setObjectName("secondaryButton")
+        self.clear_history_btn.setMinimumHeight(32)
         self.clear_history_btn.setToolTip("清空搜索历史（只清历史，不清图片）")
         self.clear_history_btn.clicked.connect(self._clear_search_history)
         
@@ -99,6 +101,7 @@ class GalleryView(QWidget):
         
         self.clear_btn = QPushButton("🗑️ 清空")
         self.clear_btn.setObjectName("dangerButton")
+        self.clear_btn.setMinimumHeight(32)
         self.clear_btn.clicked.connect(self.clear_all)
         
         self.stats_label = QLabel("图片: 0 | 总大小: 0 MB | 缓存: 0")
@@ -148,6 +151,14 @@ class GalleryView(QWidget):
         # === 底部信息栏 ===
         self.info_label = QLabel("就绪")
         layout.addWidget(self.info_label)
+
+    def _refresh_search_history(self, current_text: str = ""):
+        """刷新搜索历史下拉列表，并保留当前输入。"""
+        self.search_input.clear()
+        for kw in self.config.get_search_history():
+            self.search_input.addItem(kw)
+        self.search_input.setEditText(current_text)
+        self.search_input.lineEdit().setPlaceholderText("🔍 搜索表情包...")
     
     def do_search(self):
         """按名称搜索，并记录历史"""
@@ -158,11 +169,7 @@ class GalleryView(QWidget):
         
         # 记录搜索历史
         self.config.add_search_history(keyword)
-        # 更新下拉列表
-        self.search_input.clear()
-        for kw in self.config.get_search_history():
-            self.search_input.addItem(kw)
-        self.search_input.lineEdit().setText(keyword)
+        self._refresh_search_history(keyword)
         
         self.list_widget.clear()
         self.current_images = []
@@ -175,12 +182,20 @@ class GalleryView(QWidget):
         
         self.info_label.setText(f"搜索 '{keyword}' 找到 {len(rows)} 张")
         self.update_stats()
+
+    def reset_search(self):
+        """重置搜索输入并恢复完整图片列表。"""
+        self._refresh_search_history()
+        self.load_from_database()
+        self.info_label.setText("已重置搜索")
     
     def _clear_search_history(self):
         """清空搜索历史"""
         history = self.config.get_search_history()
         n = len(history)
-        from PyQt6.QtWidgets import QMessageBox
+        if n == 0:
+            self.info_label.setText("暂无搜索历史")
+            return
         reply = QMessageBox.question(
             self,
             "确认清空",
@@ -189,9 +204,10 @@ class GalleryView(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
+        current_text = self.search_input.currentText().strip()
         self.config.clear_search_history()
-        self.search_input.clear()
-        self.search_input.lineEdit().setPlaceholderText("🔍 搜索表情包...")
+        self._refresh_search_history(current_text)
+        self.info_label.setText("已清空搜索历史")
     
     def import_folder(self):
         """导入文件夹"""

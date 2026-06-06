@@ -63,6 +63,7 @@ QPushButton#primaryButton {
     font-weight: 700;
 }
 
+QPushButton#secondaryButton,
 #mainWindow[theme="dark"] QPushButton#secondaryButton,
 QDialog QPushButton#secondaryButton,
 #reportDialog QPushButton#secondaryButton {
@@ -71,6 +72,7 @@ QDialog QPushButton#secondaryButton,
     border: 1px solid #cfe0ff;
 }
 
+QPushButton#secondaryButton:hover,
 #mainWindow[theme="dark"] QPushButton#secondaryButton:hover,
 QDialog QPushButton#secondaryButton:hover,
 #reportDialog QPushButton#secondaryButton:hover {
@@ -78,6 +80,7 @@ QDialog QPushButton#secondaryButton:hover,
     color: #31589c;
 }
 
+QPushButton#dangerButton,
 #mainWindow[theme="dark"] QPushButton#dangerButton,
 QDialog QPushButton#dangerButton,
 #reportDialog QPushButton#dangerButton {
@@ -85,6 +88,7 @@ QDialog QPushButton#dangerButton,
     color: white;
 }
 
+QPushButton#dangerButton:hover,
 #mainWindow[theme="dark"] QPushButton#dangerButton:hover,
 QDialog QPushButton#dangerButton:hover,
 #reportDialog QPushButton#dangerButton:hover {

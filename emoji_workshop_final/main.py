@@ -1,7 +1,14 @@
 import sys
+import os
 import time
 import logging
 from pathlib import Path
+
+def get_resource_path(relative_path: str) -> Path:
+    """获取资源文件绝对路径，兼容 PyInstaller 打包与源码运行"""
+    if hasattr(sys, '_MEIPASS'):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).parent / relative_path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -12,7 +19,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtCore import QSize
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QIcon
 
 from views.gallery_view import GalleryView
 from views.tag_panel import TagPanel
@@ -461,11 +468,22 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    
+    # 图标支持
+    icon_path = get_resource_path("resources/icon.png")
+    if not icon_path.exists():
+        icon_path = get_resource_path("resources/icon.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+        
     app.setStyle('Fusion')
-    qss_path = Path(__file__).parent / "resources" / "style.qss"
+    qss_path = get_resource_path("resources/style.qss")
     if qss_path.exists():
         app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
 
     window = MainWindow()
+    if icon_path.exists():
+        window.setWindowIcon(QIcon(str(icon_path)))
+        
     window.show()
     sys.exit(app.exec())

@@ -117,7 +117,7 @@ class TagPanel(QWidget):
         self.tag_list.clear()
         rows = self.db.get_all_tags()
         for row in rows:
-            tag_id, name, color = row
+            tag_id, name, _ = row
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, tag_id)
             self.tag_list.addItem(item)
@@ -212,7 +212,7 @@ class TagPanel(QWidget):
         if len(image_ids) == 1:
             rows = self.db.get_image_tags(image_ids[0])
             for row in rows:
-                _, name, color = row
+                _, name, _ = row
                 item = QListWidgetItem(name)
                 self.image_tag_list.addItem(item)
             return
@@ -231,7 +231,7 @@ class TagPanel(QWidget):
 
         total = len(image_ids)
         for _, info in tag_counts.items():
-            _, name, color = info["row"]
+            _, name, _ = info["row"]
             cnt = info["count"]
             label = name if cnt == total else f"{name}（{cnt}/{total}）"
             item = QListWidgetItem(label)

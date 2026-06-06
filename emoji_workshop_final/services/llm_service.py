@@ -1,6 +1,7 @@
 """通用 LLM 服务 - OpenAI 兼容接口"""
 
 import json
+import logging
 import re
 
 import requests
@@ -8,6 +9,11 @@ import requests
 
 class LLMService:
     """通用 LLM 客户端，使用 OpenAI 兼容接口"""
+
+    CANDIDATE_SUMMARY_LIMIT = 80  # 限制传给 LLM 的候选摘要数量，避免 prompt 过长导致稳定性下降
+    MAX_CANDIDATE_TAGS = 8
+    MAX_CANDIDATE_KEYWORDS = 8
+    CANDIDATE_SELECTION_TIMEOUT = 45
 
     def __init__(self, base_url: str, api_key: str, model: str):
         self.base_url = base_url.rstrip("/")
@@ -113,6 +119,88 @@ class LLMService:
             "image_ids": [],
             "reason": "",
         }
+
+    def select_candidate_images(
+        self,
+        context: str,
+        image_summaries: list[dict],
+        available_tags: list[str],
+        candidate_count: int = 20,
+    ) -> dict:
+        """让 LLM 只做候选范围筛选（不做最终排序）"""
+        if len(image_summaries) > self.CANDIDATE_SUMMARY_LIMIT:
+            logging.debug(
+                "[LLMService] 候选摘要过多，已截断到 %s 条（原始 %s 条）",
+                self.CANDIDATE_SUMMARY_LIMIT,
+                len(image_summaries),
+            )
+        summaries = image_summaries[: self.CANDIDATE_SUMMARY_LIMIT]
+        summary_lines = []
+        valid_ids: set[int] = set()
+        for item in summaries:
+            image_id = item.get("id")
+            if image_id is None:
+                continue
+            try:
+                normalized_id = int(image_id)
+            except (TypeError, ValueError):
+                continue
+            valid_ids.add(normalized_id)
+            name = item.get("name", "")
+            tags = item.get("tags", [])
+            summary_lines.append(f"- id={normalized_id}, name={name}, tags={','.join(tags)}")
+
+        if not summary_lines:
+            return {"image_ids": [], "tags": [], "keywords": [], "reason": ""}
+
+        system = (
+            "你是表情包候选筛选助手。"
+            "你只能基于用户输入、表情包名称、已有标签筛选候选范围。"
+            "不要做最终排序判断，不要假装看到了图片内容。"
+        )
+        prompt = (
+            f"用户输入/聊天上下文:\n{context}\n\n"
+            f"可用标签:\n{', '.join(available_tags)}\n\n"
+            "候选图片（id/name/tags）:\n"
+            + "\n".join(summary_lines)
+            + "\n\n请严格输出 JSON（不要额外解释），格式：\n"
+            "{\n"
+            '  "image_ids": [1, 2, 3],\n'
+            '  "tags": ["标签1", "标签2"],\n'
+            '  "keywords": ["关键词1", "关键词2"],\n'
+            '  "reason": "简短说明"\n'
+            "}\n\n"
+            f"要求：\n"
+            f"1) image_ids 最多 {candidate_count} 个，且必须来自上面的 id；\n"
+            f"2) tags 只能从可用标签中选择，最多 {self.MAX_CANDIDATE_TAGS} 个；\n"
+            f"3) keywords 最多 {self.MAX_CANDIDATE_KEYWORDS} 个；\n"
+            f"4) 只做候选筛选，不做最终排序；\n"
+            f"5) 用户输入的关键词/描述/上下文是最高优先级。"
+        )
+        response = self.chat(
+            prompt,
+            system=system,
+            temperature=0.15,
+            timeout=self.CANDIDATE_SELECTION_TIMEOUT,
+        )
+        parsed = self._parse_analysis_response(
+            response,
+            available_tags,
+            top_k=max(1, candidate_count),
+        )
+
+        filtered_ids: list[int] = []
+        seen_ids: set[int] = set()
+        for image_id in parsed["image_ids"]:
+            if image_id not in valid_ids or image_id in seen_ids:
+                continue
+            filtered_ids.append(image_id)
+            seen_ids.add(image_id)
+
+        parsed["image_ids"] = filtered_ids[:candidate_count]
+        parsed["tags"] = parsed["tags"][: self.MAX_CANDIDATE_TAGS]
+        parsed["keywords"] = parsed["keywords"][: self.MAX_CANDIDATE_KEYWORDS]
+        return parsed
 
     @staticmethod
     def _parse_analysis_response(text: str, available_tags: list[str], top_k: int) -> dict:

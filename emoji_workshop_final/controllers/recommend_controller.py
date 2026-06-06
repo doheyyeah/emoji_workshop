@@ -16,6 +16,10 @@ from utils.config_manager import ConfigManager
 class RecommendController:
     """根据聊天上下文调用 LLM 推荐标签，可选视觉精排后返回图片"""
 
+    CANDIDATE_MULTIPLIER = 5
+    MIN_CANDIDATE_COUNT = 20
+    MAX_CANDIDATE_COUNT = 30
+
     def __init__(
         self,
         db_service: DatabaseService,
@@ -29,7 +33,7 @@ class RecommendController:
         self.last_debug_info: dict = {}
 
     def recommend(self, context: str, top_k: int = 3) -> list[ImageModel]:
-        """智能推荐：LLM（可选）召回 + 文本打分 + 视觉精排（可选）"""
+        """智能推荐：LLM 粗筛候选 + 本地补齐 + 视觉精排"""
         llm_cfg = self.config_manager.get_llm_config()
         get_vision = getattr(self.config_manager, "get_vision_config", None)
         vision_cfg = get_vision() if get_vision else {}
@@ -40,6 +44,7 @@ class RecommendController:
 
         available_tags = sorted({tag for img in all_images for tag in img.get("tags", [])})
         local_keywords = self._extract_keywords(context)
+        candidate_count = self._calc_candidate_count(top_k)
 
         llm_tags: list[str] = []
         llm_keywords: list[str] = []
@@ -60,12 +65,20 @@ class RecommendController:
                     for img in all_images
                 ]
                 try:
-                    analysis = llm.analyze_recommendation(
-                        context=context,
-                        image_summaries=summaries,
-                        available_tags=available_tags,
-                        top_k=max(top_k, 5),
-                    )
+                    if hasattr(llm, "select_candidate_images"):
+                        analysis = llm.select_candidate_images(
+                            context=context,
+                            image_summaries=summaries,
+                            available_tags=available_tags,
+                            candidate_count=candidate_count,
+                        )
+                    else:
+                        analysis = llm.analyze_recommendation(
+                            context=context,
+                            image_summaries=summaries,
+                            available_tags=available_tags,
+                            top_k=max(top_k, 5),
+                        )
                     llm_tags = analysis.get("tags", [])
                     llm_keywords = analysis.get("keywords", [])
                     llm_image_ids = analysis.get("image_ids", [])
@@ -89,8 +102,15 @@ class RecommendController:
             llm_image_ids=llm_image_ids,
             local_keywords=local_keywords,
         )
-        candidate_count = min(max(top_k * 5, 20), 30)
-        candidates = ranked_all[:candidate_count]
+        candidates, llm_seed_count = self._build_candidate_scope(
+            ranked_all=ranked_all,
+            preferred_ids=llm_image_ids,
+            candidate_count=candidate_count,
+        )
+        if llm_status == "成功" and llm_seed_count == 0:
+            fallback_notes.append("LLM 粗筛无有效候选，已降级本地文本匹配")
+        elif llm_status == "成功" and llm_seed_count < candidate_count:
+            fallback_notes.append("LLM 候选不足，已使用本地文本匹配补齐")
 
         vision_status = "未启用"
         selected_rows = candidates[:top_k]
@@ -102,13 +122,21 @@ class RecommendController:
                         api_key=vision_cfg["api_key"],
                         model=vision_cfg["model"],
                     )
-                    reranked = vision.rerank(context, candidates, top_k=top_k)
+                    reranked = vision.rerank(
+                        context=context,
+                        candidate_images=candidates,
+                        top_k=top_k,
+                        max_images=len(candidates),
+                    )
                     if reranked:
                         selected_rows = reranked
                     vision_status = "成功"
                 except Exception as exc:
                     vision_status = "失败"
-                    fallback_notes.append("视觉精排失败，已降级文本排序")
+                    if llm_status == "成功":
+                        fallback_notes.append("视觉精排失败，已降级为 LLM 粗筛 + 本地文本排序")
+                    else:
+                        fallback_notes.append("视觉精排失败，已降级本地文本排序")
                     logging.debug("[RecommendController] 视觉精排失败，降级文本排序: %s", exc)
             else:
                 vision_status = "未配置Key"
@@ -127,6 +155,15 @@ class RecommendController:
             "reason": llm_reason,
         }
         return [ImageModel.from_db_row(self._dict_to_row(r)) for r in selected_rows]
+
+    @staticmethod
+    def _calc_candidate_count(top_k: int) -> int:
+        """根据 top_k 计算候选池大小，并限制在最小/最大阈值内。"""
+        base_count = max(
+            top_k * RecommendController.CANDIDATE_MULTIPLIER,
+            RecommendController.MIN_CANDIDATE_COUNT,
+        )
+        return min(base_count, RecommendController.MAX_CANDIDATE_COUNT)
 
     @staticmethod
     def _extract_keywords(context: str) -> list[str]:
@@ -200,6 +237,37 @@ class RecommendController:
 
         scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
         return [item[2] for item in scored]
+
+    @staticmethod
+    def _build_candidate_scope(
+        ranked_all: list[dict], preferred_ids: list[int], candidate_count: int
+    ) -> tuple[list[dict], int]:
+        """构建候选池并返回 (候选列表, LLM 种子命中数)。"""
+        id_map = {img.get("id"): img for img in ranked_all}
+        selected: list[dict] = []
+        seen: set[int] = set()
+        seeded = 0
+
+        for image_id in preferred_ids:
+            image = id_map.get(image_id)
+            if image is None or image_id in seen:
+                continue
+            selected.append(image)
+            seen.add(image_id)
+            seeded += 1
+            if len(selected) >= candidate_count:
+                return selected, seeded
+
+        for image in ranked_all:
+            image_id = image.get("id")
+            if image_id in seen:
+                continue
+            selected.append(image)
+            if image_id is not None:
+                seen.add(image_id)
+            if len(selected) >= candidate_count:
+                break
+        return selected, seeded
 
     @staticmethod
     def _row_to_dict(row) -> dict:

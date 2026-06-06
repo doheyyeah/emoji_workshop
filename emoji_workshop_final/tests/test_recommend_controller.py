@@ -50,8 +50,9 @@ def test_recommend_works_with_vision_only(monkeypatch):
         def __init__(self, **kwargs):
             pass
 
-        def rerank(self, context, candidates, top_k=3):
-            return list(reversed(candidates[:top_k]))
+        def rerank(self, context, candidate_images, top_k=3, max_images=None):
+            assert max_images == len(candidate_images)
+            return list(reversed(candidate_images[:top_k]))
 
     monkeypatch.setattr("controllers.recommend_controller.VisionService", _FakeVision)
     cfg = _FakeConfig(
@@ -69,7 +70,7 @@ def test_vision_failure_falls_back_to_text(monkeypatch):
         def __init__(self, **kwargs):
             pass
 
-        def rerank(self, context, candidates, top_k=3):
+        def rerank(self, context, candidate_images, top_k=3, max_images=None):
             raise RuntimeError("boom")
 
     monkeypatch.setattr("controllers.recommend_controller.VisionService", _BrokenVision)
@@ -82,3 +83,18 @@ def test_vision_failure_falls_back_to_text(monkeypatch):
     assert len(results) == 2
     assert controller.last_debug_info["vision_status"] == "失败"
     assert "降级" in controller.last_debug_info["fallback"]
+
+
+def test_build_candidate_scope_prioritizes_llm_ids():
+    ranked = [
+        {"id": 1, "name": "a", "file_path": "/tmp/1.png", "file_type": "png"},
+        {"id": 2, "name": "b", "file_path": "/tmp/2.png", "file_type": "png"},
+        {"id": 3, "name": "c", "file_path": "/tmp/3.png", "file_type": "png"},
+    ]
+    selected, seeded = RecommendController._build_candidate_scope(
+        ranked_all=ranked,
+        preferred_ids=[3, 99, 3],
+        candidate_count=3,
+    )
+    assert seeded == 1
+    assert [item["id"] for item in selected] == [3, 1, 2]

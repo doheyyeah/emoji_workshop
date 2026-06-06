@@ -38,3 +38,27 @@ def test_analyze_recommendation_fallback_to_recommend_tags(monkeypatch):
     )
     assert result["tags"] == ["无语"]
     assert result["keywords"] == []
+
+
+def test_select_candidate_images_filters_invalid_image_ids(monkeypatch):
+    svc = LLMService("https://example.com", "k", "m")
+    monkeypatch.setattr(
+        svc,
+        "chat",
+        lambda *_, **__: (
+            '{"image_ids":[2,"bad",99,2,1],"tags":["开心","不存在"],'
+            '"keywords":["困","下班"],"reason":"粗筛"}'
+        ),
+    )
+    result = svc.select_candidate_images(
+        context="想下班",
+        image_summaries=[
+            {"id": 1, "name": "下班", "tags": ["开心"]},
+            {"id": 2, "name": "困了", "tags": ["无语"]},
+        ],
+        available_tags=["开心", "无语"],
+        candidate_count=5,
+    )
+    assert result["image_ids"] == [2, 1]
+    assert result["tags"] == ["开心"]
+    assert result["keywords"] == ["困", "下班"]

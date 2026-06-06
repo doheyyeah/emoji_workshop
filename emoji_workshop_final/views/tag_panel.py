@@ -34,9 +34,8 @@ class TagPanel(QWidget):
         layout.setSpacing(10)
 
         # === 模式切换 ===
-        # 原来「筛选模式 / 打标签模式 / 并集 / 交集」全部挤在同一行，
-        # 右侧面板较窄时会发生遮挡。拆成两行，并让并/交选项靠左显示，
-        # 可以避免“交集”被右边缘覆盖。
+        # 右侧面板宽度有限，因此模式选择和筛选逻辑选择全部纵向排列，
+        # 避免“并集 / 交集”挤在一行时被右侧边缘遮挡。
         mode_layout = QVBoxLayout()
         mode_layout.setContentsMargins(0, 0, 0, 0)
         mode_layout.setSpacing(8)
@@ -54,10 +53,9 @@ class TagPanel(QWidget):
         mode_layout.addWidget(self.tag_mode_radio)
         layout.addLayout(mode_layout)
 
-        match_layout = QHBoxLayout()
-        match_layout.setContentsMargins(0, 0, 0, 0)
-        match_layout.setSpacing(14)
-        match_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        match_layout = QVBoxLayout()
+        match_layout.setContentsMargins(22, 0, 0, 0)
+        match_layout.setSpacing(6)
         self.union_radio = QRadioButton("并集")
         self.intersect_radio = QRadioButton("交集")
         self.union_radio.setMinimumHeight(26)
@@ -66,7 +64,6 @@ class TagPanel(QWidget):
         self.union_radio.toggled.connect(self._on_match_mode_changed)
         match_layout.addWidget(self.union_radio)
         match_layout.addWidget(self.intersect_radio)
-        match_layout.addStretch(1)
         layout.addLayout(match_layout)
 
         self.mode_hint_label = QLabel("已选中 0 个标签作筛选条件")

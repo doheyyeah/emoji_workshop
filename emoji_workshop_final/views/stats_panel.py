@@ -29,6 +29,7 @@ CHART_TEXT = "#526174"
 CHART_GRID = "#dce7f5"
 CHART_BLUE = "#5b8def"
 CHART_BLUE_DARK = "#4169b1"
+CHART_FILL_ALPHA = 0.16
 
 
 class StatsPanel(QWidget):
@@ -264,7 +265,7 @@ class StatsPanel(QWidget):
 
         values = [counts.get(d, 0) for d in dates]
         ax.plot(dates, values, marker='o', color=CHART_BLUE, linewidth=2, markersize=5)
-        ax.fill_between(dates, values, alpha=0.16, color=CHART_BLUE)
+        ax.fill_between(dates, values, alpha=CHART_FILL_ALPHA, color=CHART_BLUE)
         ax.set_xticks(range(len(dates)))
         ax.set_xticklabels(dates)
         ax.grid(axis='y', color=CHART_GRID, linewidth=0.8, alpha=0.8)

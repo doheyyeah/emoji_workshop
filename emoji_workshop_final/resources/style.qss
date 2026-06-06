@@ -133,6 +133,7 @@ QDialog QComboBox::down-arrow,
     image: none;
     width: 0;
     height: 0;
+    /* Creates a compact downward triangle for the custom light-theme arrow. */
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-top: 6px solid #5b8def;

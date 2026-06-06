@@ -32,6 +32,160 @@ logging.basicConfig(
 )
 
 
+# Some native Qt sub-controls, especially the viewport inside QListWidget/QTextEdit
+# and widgets created before the mainWindow dynamic property is polished, can keep the
+# dark Fusion background even when style.qss defines a light theme.  These unscoped
+# runtime overrides remove the remaining dark blocks while keeping the blue-white
+# palette in resources/style.qss.
+HARD_LIGHT_THEME_OVERRIDES = """
+/* ===== Runtime hard override: remove remaining dark native backgrounds ===== */
+QWidget#galleryView,
+QWidget#rightContainer,
+QWidget#tagPanel,
+QWidget#recommendPanel,
+QScrollArea#rightScrollArea,
+QScrollArea#rightScrollArea > QWidget,
+QScrollArea#rightScrollArea > QWidget > QWidget {
+    background-color: #f5f8fc;
+    color: #223047;
+}
+
+QAbstractScrollArea,
+QAbstractItemView,
+QListWidget,
+QListWidget#thumbList,
+QListWidget#tagList,
+QListWidget#imageTagList,
+QListWidget#rankingList,
+QTextEdit,
+QTextBrowser,
+QLineEdit,
+QComboBox {
+    background-color: #ffffff;
+    color: #223047;
+    border: 1px solid #c9d8ec;
+    border-radius: 10px;
+    selection-background-color: #d9e8ff;
+    selection-color: #16345f;
+}
+
+QListWidget::viewport,
+QListView::viewport,
+QTextEdit::viewport,
+QTextBrowser::viewport,
+QAbstractScrollArea::viewport {
+    background-color: #ffffff;
+    color: #223047;
+}
+
+QListWidget#thumbList,
+QListWidget#thumbList::viewport,
+QListWidget#tagList,
+QListWidget#tagList::viewport,
+QListWidget#imageTagList,
+QListWidget#imageTagList::viewport,
+QListWidget#rankingList,
+QListWidget#rankingList::viewport {
+    background-color: #ffffff;
+    color: #223047;
+}
+
+QWidget#tagPanel QWidget,
+QWidget#recommendPanel QWidget {
+    background-color: #f5f8fc;
+    color: #223047;
+}
+
+QWidget#tagPanel QLineEdit,
+QWidget#tagPanel QListWidget,
+QWidget#tagPanel QListWidget::viewport,
+QWidget#recommendPanel QTextEdit,
+QWidget#recommendPanel QTextEdit::viewport,
+QWidget#recommendPanel QListWidget,
+QWidget#recommendPanel QListWidget::viewport {
+    background-color: #ffffff;
+    color: #223047;
+    border: 1px solid #c9d8ec;
+}
+
+QListWidget::item {
+    background-color: transparent;
+    color: #223047;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QListWidget::item:hover {
+    background-color: #edf4ff;
+}
+
+QListWidget::item:selected {
+    background-color: #d9e8ff;
+    color: #16345f;
+}
+
+QSplitter::handle {
+    background-color: #dbe6f5;
+}
+
+QSplitter::handle:hover {
+    background-color: #b9ccea;
+}
+
+QScrollBar:vertical {
+    background: #e7eef8;
+    width: 10px;
+    margin: 2px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+    background: #aebfda;
+    border-radius: 5px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #8fa7cc;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: #e7eef8;
+    border-radius: 5px;
+}
+
+QScrollBar:horizontal {
+    background: #e7eef8;
+    height: 10px;
+    margin: 2px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #aebfda;
+    border-radius: 5px;
+    min-width: 24px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #8fa7cc;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: #e7eef8;
+    border-radius: 5px;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+"""
+
+
 class MainWindow(QMainWindow):
     """表情工坊主窗口 - Day7 AI 生成版
 
@@ -187,10 +341,23 @@ class MainWindow(QMainWindow):
         self._apply_theme()
 
     def _apply_theme(self):
-        """固定使用 dark 主题"""
+        """固定使用 dark 主题，并强制刷新所有子控件样式。"""
         self.setProperty("theme", "dark")
-        self.style().unpolish(self)
-        self.style().polish(self)
+        # Apply unscoped overrides on the main window so child viewports also inherit
+        # the light blue-white palette instead of the native dark Fusion background.
+        self.setStyleSheet(HARD_LIGHT_THEME_OVERRIDES)
+
+        widgets = [self] + self.findChildren(QWidget)
+        for widget in widgets:
+            widget.setProperty("theme", "dark")
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+            widget.update()
+
+        app = QApplication.instance()
+        if app:
+            app.style().unpolish(app)
+            app.style().polish(app)
 
     def _open_report_dialog(self):
         """打开性格画像报告对话框"""

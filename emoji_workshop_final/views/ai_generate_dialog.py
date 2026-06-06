@@ -353,7 +353,7 @@ class AIGenerateDialog(QDialog):
             try:
                 resp = requests.get(
                     f"{base_url}/models",
-                    headers={"Authorization": f"{'Bearer'} {api_key}"},
+                    headers={"Authorization": f"Bearer {api_key}"},
                     timeout=15,
                 )
                 resp.raise_for_status()

@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QComboBox, QSpinBox, QCheckBox, QDialogButtonBox,
+    QLineEdit, QCheckBox, QDialogButtonBox,
     QFileDialog, QTabWidget, QWidget, QGroupBox, QFormLayout,
-    QMessageBox, QListWidget, QListWidgetItem
+    QMessageBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor
@@ -14,10 +14,10 @@ class SettingsDialog(QDialog):
     """应用设置对话框：多标签页设计
 
     标签页：
-    - 常规：主题、缩略图大小、行为设置
     - 路径：默认文件夹、缓存位置
     - 网络：连接测试
     - 高级：重置配置、统计信息
+    - 🤖 AI 推荐：LLM / 视觉精排 / 动图生成配置
     """
 
     def __init__(self, parent=None):
@@ -36,23 +36,19 @@ class SettingsDialog(QDialog):
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs)
 
-        # === 标签页1：常规 ===
-        self.general_tab = self._create_general_tab()
-        self.tabs.addTab(self.general_tab, "常规")
-
-        # === 标签页2：路径 ===
+        # === 标签页1：路径 ===
         self.paths_tab = self._create_paths_tab()
         self.tabs.addTab(self.paths_tab, "路径")
 
-        # === 标签页3：网络 ===
+        # === 标签页2：网络 ===
         self.network_tab = self._create_network_tab()
         self.tabs.addTab(self.network_tab, "网络")
 
-        # === 标签页4：高级 ===
+        # === 标签页3：高级 ===
         self.advanced_tab = self._create_advanced_tab()
         self.tabs.addTab(self.advanced_tab, "高级")
 
-        # === 标签页5：AI 推荐 ===
+        # === 标签页4：AI 推荐 ===
         self.ai_tab = self._create_ai_tab()
         self.tabs.addTab(self.ai_tab, "🤖 AI 推荐")
 
@@ -68,61 +64,6 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self._save_and_close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-
-    def _create_general_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        # 外观设置组
-        appearance_group = QGroupBox("外观")
-        appearance_layout = QFormLayout()
-
-        self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["dark", "light"])
-        appearance_layout.addRow("主题:", self.theme_combo)
-
-        self.thumb_size_spin = QSpinBox()
-        self.thumb_size_spin.setRange(64, 256)
-        self.thumb_size_spin.setSuffix(" px")
-        appearance_layout.addRow("缩略图大小:", self.thumb_size_spin)
-
-        appearance_group.setLayout(appearance_layout)
-        layout.addWidget(appearance_group)
-
-        # 行为设置组
-        behavior_group = QGroupBox("行为")
-        behavior_layout = QFormLayout()
-
-        self.auto_save_check = QCheckBox("修改配置后自动保存")
-        behavior_layout.addRow(self.auto_save_check)
-
-        self.confirm_delete_check = QCheckBox("删除前显示确认对话框")
-        behavior_layout.addRow(self.confirm_delete_check)
-
-        self.clipboard_monitor_check = QCheckBox("启用剪贴板监听（检测到图片自动询问是否入库）")
-        behavior_layout.addRow(self.clipboard_monitor_check)
-
-        behavior_group.setLayout(behavior_layout)
-        layout.addWidget(behavior_group)
-
-        # 最近文件夹列表
-        recent_group = QGroupBox("最近导入的文件夹")
-        recent_layout = QVBoxLayout()
-        self.recent_list = QListWidget()
-        self.recent_list.setMaximumHeight(120)
-        self.recent_list.itemDoubleClicked.connect(self._on_recent_folder_dblclick)
-        recent_layout.addWidget(self.recent_list)
-        recent_layout.addWidget(QLabel("（双击可重新导入该文件夹）"))
-
-        clear_recent_btn = QPushButton("清空历史")
-        clear_recent_btn.clicked.connect(self._clear_recent)
-        recent_layout.addWidget(clear_recent_btn)
-
-        recent_group.setLayout(recent_layout)
-        layout.addWidget(recent_group)
-
-        layout.addStretch()
-        return tab
 
     def _create_paths_tab(self) -> QWidget:
         tab = QWidget()
@@ -289,20 +230,6 @@ class SettingsDialog(QDialog):
 
     def _load_all_settings(self):
         """从 ConfigManager 加载所有设置到 UI"""
-        # 常规
-        self.theme_combo.setCurrentText(self.config.get("ui.theme", "dark"))
-        self.thumb_size_spin.setValue(self.config.get("ui.thumbnail_size", 128))
-        self.auto_save_check.setChecked(self.config.get("behavior.auto_save", True))
-        self.confirm_delete_check.setChecked(self.config.get("behavior.confirm_delete", True))
-        self.clipboard_monitor_check.setChecked(
-            self.config.get("behavior.clipboard_monitor_enabled", False)
-        )
-
-        # 最近文件夹（使用 get_recent_folders 方法确保兼容）
-        self.recent_list.clear()
-        for folder in self.config.get_recent_folders():
-            self.recent_list.addItem(folder)
-
         # 路径
         self.import_path_edit.setText(self.config.get("paths.last_import_folder", ""))
         self.export_path_edit.setText(self.config.get("paths.last_export_folder", ""))
@@ -328,13 +255,6 @@ class SettingsDialog(QDialog):
 
     def _save_and_close(self):
         """保存所有设置并关闭对话框"""
-        # 常规
-        self.config.set("ui.theme", self.theme_combo.currentText())
-        self.config.set("ui.thumbnail_size", self.thumb_size_spin.value())
-        self.config.set("behavior.auto_save", self.auto_save_check.isChecked())
-        self.config.set("behavior.confirm_delete", self.confirm_delete_check.isChecked())
-        self.config.set("behavior.clipboard_monitor_enabled", self.clipboard_monitor_check.isChecked())
-
         # 路径
         self.config.set("paths.last_import_folder", self.import_path_edit.text())
         self.config.set("paths.last_export_folder", self.export_path_edit.text())
@@ -373,25 +293,6 @@ class SettingsDialog(QDialog):
         folder = QFileDialog.getExistingDirectory(self, "选择默认导出文件夹")
         if folder:
             self.export_path_edit.setText(folder)
-
-    def _clear_recent(self):
-        self.config.set("behavior.recent_folders", [])
-        self.recent_list.clear()
-    
-    def _on_recent_folder_dblclick(self, item):
-        """双击最近文件夹项，通知主窗口导入该文件夹"""
-        folder = item.text()
-        from pathlib import Path as _Path
-        if not _Path(folder).exists():
-            QMessageBox.warning(self, "警告", f"文件夹不存在：{folder}")
-            return
-        # 通知父窗口（MainWindow）触发导入
-        parent = self.parent()
-        if parent and hasattr(parent, 'gallery'):
-            self.accept()
-            count = parent.gallery.import_folder_path(folder)
-            parent.gallery.load_from_database()
-            QMessageBox.information(parent, "导入完成", f"已从最近文件夹导入 {count} 张图片")
 
     def _restore_defaults(self):
         reply = QMessageBox.question(

@@ -185,9 +185,8 @@ class MainWindow(QMainWindow):
         self._apply_theme()
 
     def _apply_theme(self):
-        """应用配置中的主题设置"""
-        theme = self.config.get("ui.theme", "dark")
-        self.setProperty("theme", theme)
+        """固定使用 dark 主题"""
+        self.setProperty("theme", "dark")
         self.style().unpolish(self)
         self.style().polish(self)
 

@@ -1,5 +1,4 @@
 import sqlite3
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -257,6 +256,42 @@ class DatabaseService:
             """
             cursor.execute(query, tag_names + [len(set(tag_names))])
             return [self._row_to_image_dict(row) for row in cursor.fetchall()]
+
+    def get_all_images_with_tags(self, limit: int | None = None) -> list[dict]:
+        """获取全部图片及标签元数据（按创建时间倒序）"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            limit_sql = ""
+            params: list = []
+            if limit and limit > 0:
+                limit_sql = "LIMIT ?"
+                params.append(limit)
+
+            cursor.execute(
+                f"""
+                SELECT
+                    i.id, i.name, i.file_path, i.file_type, i.file_size, i.width, i.height, i.thumbnail_path,
+                    i.created_at,
+                    GROUP_CONCAT(DISTINCT t.name) AS tag_names
+                FROM images i
+                LEFT JOIN image_tags it ON i.id = it.image_id
+                LEFT JOIN tags t ON t.id = it.tag_id
+                GROUP BY i.id
+                ORDER BY i.created_at DESC
+                {limit_sql}
+                """,
+                params,
+            )
+            rows = cursor.fetchall()
+
+        result: list[dict] = []
+        for row in rows:
+            tags = [tag.strip() for tag in (row[9] or "").split(",") if tag and tag.strip()]
+            info = self._row_to_image_dict(row[:8])
+            info["created_at"] = row[8]
+            info["tags"] = tags
+            result.append(info)
+        return result
 
     # ===== 上下文推荐：关键词标签匹配 =====
 

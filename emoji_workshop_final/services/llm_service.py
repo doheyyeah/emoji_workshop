@@ -1,5 +1,6 @@
 """通用 LLM 服务 - OpenAI 兼容接口"""
 
+import json
 import re
 
 import requests
@@ -68,3 +69,100 @@ class LLMService:
         parts = re.split(r"[,，;\n；]+", response)
         tags = [t.strip().lstrip("0123456789.、- ") for t in parts if t.strip()]
         return [t for t in tags if t in available_tags][:top_k]
+
+    def analyze_recommendation(
+        self,
+        context: str,
+        image_summaries: list[dict],
+        available_tags: list[str],
+        top_k: int = 5,
+    ) -> dict:
+        """结构化分析推荐意图（标签 + 关键词 + 可选图片 ID）"""
+        summaries = image_summaries[:50]
+        summary_lines = []
+        for item in summaries:
+            image_id = item.get("id")
+            name = item.get("name", "")
+            tags = item.get("tags", [])
+            summary_lines.append(f"- id={image_id}, name={name}, tags={','.join(tags)}")
+
+        system = "你是一个表情包推荐助手，擅长根据聊天语境理解语气、情绪和表达意图。"
+        prompt = (
+            f"聊天上下文:\n{context}\n\n"
+            f"可用标签:\n{', '.join(available_tags)}\n\n"
+            "候选图片（id/name/tags）:\n"
+            + "\n".join(summary_lines)
+            + "\n\n请输出 JSON（不要输出额外解释），格式：\n"
+            "{\n"
+            '  "tags": ["标签1", "标签2"],\n'
+            '  "keywords": ["关键词1", "关键词2"],\n'
+            '  "image_ids": [1, 2],\n'
+            '  "reason": "可选，简短原因"\n'
+            "}\n\n"
+            f"要求：\n1) tags 只从可用标签中选择，最多 {top_k} 个\n"
+            f"2) keywords 最多 {top_k} 个，优先情绪词、语气词、表达意图词\n"
+            f"3) image_ids 最多 {top_k} 个，必须来自候选图片 id"
+        )
+        response = self.chat(prompt, system=system, temperature=0.2, timeout=30)
+        parsed = self._parse_analysis_response(response, available_tags, top_k=top_k)
+        if parsed["tags"] or parsed["keywords"] or parsed["image_ids"]:
+            return parsed
+        return {
+            "tags": self.recommend_tags(context, available_tags, top_k=top_k),
+            "keywords": [],
+            "image_ids": [],
+            "reason": "",
+        }
+
+    @staticmethod
+    def _parse_analysis_response(text: str, available_tags: list[str], top_k: int) -> dict:
+        payload = LLMService._extract_json_payload(text)
+        if not payload:
+            return {"tags": [], "keywords": [], "image_ids": [], "reason": ""}
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return {"tags": [], "keywords": [], "image_ids": [], "reason": ""}
+
+        tags = data.get("tags", []) if isinstance(data, dict) else []
+        keywords = data.get("keywords", []) if isinstance(data, dict) else []
+        image_ids = data.get("image_ids", []) if isinstance(data, dict) else []
+        reason = data.get("reason", "") if isinstance(data, dict) else ""
+
+        if not isinstance(tags, list):
+            tags = []
+        if not isinstance(keywords, list):
+            keywords = []
+        if not isinstance(image_ids, list):
+            image_ids = []
+
+        tag_set = set(available_tags)
+        norm_tags = [str(t).strip() for t in tags if str(t).strip() in tag_set][:top_k]
+        norm_keywords = [str(k).strip() for k in keywords if str(k).strip()][:top_k]
+
+        norm_image_ids: list[int] = []
+        for val in image_ids:
+            try:
+                norm_image_ids.append(int(val))
+            except (TypeError, ValueError):
+                continue
+        return {
+            "tags": norm_tags,
+            "keywords": norm_keywords,
+            "image_ids": norm_image_ids[:top_k],
+            "reason": str(reason).strip() if reason is not None else "",
+        }
+
+    @staticmethod
+    def _extract_json_payload(text: str) -> str:
+        content = (text or "").strip()
+        if not content:
+            return ""
+        fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, flags=re.DOTALL)
+        if fence:
+            return fence.group(1).strip()
+        start = content.find("{")
+        end = content.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return ""
+        return content[start : end + 1]

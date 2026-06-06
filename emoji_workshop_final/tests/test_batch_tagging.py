@@ -39,11 +39,7 @@ def test_batch_tagging_assigns_tag_to_all_selected_images(tmp_path):
 
 def test_llm_recommend_filters_unknown_tags():
     class FakeDB:
-        def get_all_tags(self):
-            return [(1, "开心", "#fff"), (2, "哈哈", "#fff"), (3, "生气", "#fff")]
-
-        def get_images_by_tags_union(self, tag_names):
-            assert tag_names == ["开心", "哈哈"]
+        def get_all_images_with_tags(self):
             return [
                 {
                     "id": 1,
@@ -54,6 +50,7 @@ def test_llm_recommend_filters_unknown_tags():
                     "width": 10,
                     "height": 10,
                     "thumbnail_path": "",
+                    "tags": ["开心", "哈哈"],
                 }
             ]
 
@@ -70,8 +67,8 @@ def test_llm_recommend_filters_unknown_tags():
         def __init__(self, **kwargs):
             pass
 
-        def recommend_tags(self, context, all_tags, top_k=3):
-            return ["开心", "哈哈"][:top_k]
+        def analyze_recommendation(self, **kwargs):
+            return {"tags": ["开心", "哈哈"], "keywords": [], "image_ids": [], "reason": ""}
 
     controller = RecommendController(FakeDB(), config_manager=FakeConfig(), llm_service_cls=FakeLLM)
     models = controller.recommend("今天真开心", top_k=3)
@@ -86,15 +83,24 @@ def test_llm_service_filters_unknown_tags(monkeypatch):
     assert tags == ["开心", "哈哈"]
 
 
-def test_llm_recommend_requires_enabled_config():
+def test_llm_disabled_still_uses_local_matching():
     class FakeDB:
-        def get_all_tags(self):
-            return [(1, "开心", "#fff")]
+        def get_all_images_with_tags(self):
+            return [
+                {
+                    "id": 1,
+                    "name": "开心",
+                    "file_path": "/tmp/a.png",
+                    "file_type": "png",
+                    "tags": ["开心"],
+                }
+            ]
 
     class FakeConfig:
         def get_llm_config(self):
             return {"enabled": False, "api_key": ""}
 
     controller = RecommendController(FakeDB(), config_manager=FakeConfig())
-    with pytest.raises(RuntimeError, match="未启用 LLM 智能推荐"):
-        controller.recommend("hi")
+    models = controller.recommend("hi")
+    assert len(models) == 1
+    assert controller.last_debug_info["llm_status"] == "未启用"

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 
 from models.image_model import ImageModel
 from services.database_service import DatabaseService
@@ -24,67 +26,180 @@ class RecommendController:
         self.config_manager = config_manager or ConfigManager()
         self.llm_service_cls = llm_service_cls
         self.last_recommended_tags: list[str] = []
+        self.last_debug_info: dict = {}
 
     def recommend(self, context: str, top_k: int = 3) -> list[ImageModel]:
-        """两阶段智能推荐
-
-        阶段 1: 文本 LLM 选标签 → 候选集（top_k * 3）
-        阶段 2（可选）: 视觉精排 → top_k
-
-        视觉未启用：只走文本 LLM
-        视觉调用失败：降级到文本 LLM 结果，并记录日志
-        LLM 未启用或无 Key：直接抛出异常，不做本地降级
-        """
-        config = self.config_manager.get_llm_config()
-        if not config.get("enabled"):
-            raise RuntimeError("未启用 LLM 智能推荐，请到 设置 → AI 推荐 中开启")
-        if not config.get("api_key"):
-            raise RuntimeError("未配置 API Key，请到 设置 → AI 推荐 中填写")
-
-        all_tags = [t[1] for t in self.db_service.get_all_tags()]
-        if not all_tags:
-            raise RuntimeError("当前库中没有任何标签，请先给图片打标签")
-
-        llm = self.llm_service_cls(
-            base_url=config["base_url"],
-            api_key=config["api_key"],
-            model=config["model"],
-        )
-        try:
-            recommended_tags = llm.recommend_tags(context, all_tags, top_k=top_k)
-        except Exception as exc:
-            raise RuntimeError("AI 连接失败：网络不佳或 API Key 无效，请检查设置") from exc
-        self.last_recommended_tags = recommended_tags
-
-        if not recommended_tags:
-            raise RuntimeError("LLM 未返回任何推荐标签")
-
-        # 阶段 1：文本 LLM 召回候选集（top_k * 3，最多 9 张）
-        candidate_count = min(top_k * 3, 9)
-        rows = self.db_service.get_images_by_tags_union(recommended_tags)[:candidate_count]
-        candidates = [self._row_to_dict(row) for row in rows]
-
-        if not candidates:
-            return []
-
-        # 阶段 2（可选）：视觉精排
+        """智能推荐：LLM（可选）召回 + 文本打分 + 视觉精排（可选）"""
+        llm_cfg = self.config_manager.get_llm_config()
         get_vision = getattr(self.config_manager, "get_vision_config", None)
         vision_cfg = get_vision() if get_vision else {}
-        if vision_cfg.get("enabled") and vision_cfg.get("api_key"):
-            try:
-                vision = VisionService(
-                    base_url=vision_cfg["base_url"],
-                    api_key=vision_cfg["api_key"],
-                    model=vision_cfg["model"],
-                )
-                reranked = vision.rerank(context, candidates, top_k=top_k)
-                if reranked:
-                    return [ImageModel.from_db_row(self._dict_to_row(r)) for r in reranked]
-            except Exception as exc:
-                logging.debug("[RecommendController] 视觉精排失败，降级到文本 LLM 结果: %s", exc)
 
-        # 降级：直接用文本 LLM 候选的前 top_k 个
-        return [ImageModel.from_db_row(self._dict_to_row(r)) for r in candidates[:top_k]]
+        all_images = self.db_service.get_all_images_with_tags()
+        if not all_images:
+            return []
+
+        available_tags = sorted({tag for img in all_images for tag in img.get("tags", [])})
+        local_keywords = self._extract_keywords(context)
+
+        llm_tags: list[str] = []
+        llm_keywords: list[str] = []
+        llm_image_ids: list[int] = []
+        llm_reason = ""
+        llm_status = "未启用"
+        fallback_notes: list[str] = []
+
+        if llm_cfg.get("enabled"):
+            if llm_cfg.get("api_key"):
+                llm = self.llm_service_cls(
+                    base_url=llm_cfg["base_url"],
+                    api_key=llm_cfg["api_key"],
+                    model=llm_cfg["model"],
+                )
+                summaries = [
+                    {"id": img.get("id"), "name": img.get("name", ""), "tags": img.get("tags", [])}
+                    for img in all_images
+                ]
+                try:
+                    analysis = llm.analyze_recommendation(
+                        context=context,
+                        image_summaries=summaries,
+                        available_tags=available_tags,
+                        top_k=max(top_k, 5),
+                    )
+                    llm_tags = analysis.get("tags", [])
+                    llm_keywords = analysis.get("keywords", [])
+                    llm_image_ids = analysis.get("image_ids", [])
+                    llm_reason = analysis.get("reason", "")
+                    llm_status = "成功"
+                except Exception as exc:
+                    llm_status = "失败"
+                    fallback_notes.append("LLM 调用失败，已降级本地召回")
+                    logging.debug("[RecommendController] LLM 分析失败，降级本地召回: %s", exc)
+            else:
+                llm_status = "未配置Key"
+                fallback_notes.append("LLM 已启用但未配置 API Key")
+
+        self.last_recommended_tags = list(llm_tags)
+
+        ranked_all = self._rank_candidates(
+            context=context,
+            all_images=all_images,
+            llm_tags=llm_tags,
+            llm_keywords=llm_keywords,
+            llm_image_ids=llm_image_ids,
+            local_keywords=local_keywords,
+        )
+        candidate_count = min(max(top_k * 5, 20), 30)
+        candidates = ranked_all[:candidate_count]
+
+        vision_status = "未启用"
+        selected_rows = candidates[:top_k]
+        if vision_cfg.get("enabled"):
+            if vision_cfg.get("api_key"):
+                try:
+                    vision = VisionService(
+                        base_url=vision_cfg["base_url"],
+                        api_key=vision_cfg["api_key"],
+                        model=vision_cfg["model"],
+                    )
+                    reranked = vision.rerank(context, candidates, top_k=top_k)
+                    if reranked:
+                        selected_rows = reranked
+                    vision_status = "成功"
+                except Exception as exc:
+                    vision_status = "失败"
+                    fallback_notes.append("视觉精排失败，已降级文本排序")
+                    logging.debug("[RecommendController] 视觉精排失败，降级文本排序: %s", exc)
+            else:
+                vision_status = "未配置Key"
+                fallback_notes.append("视觉精排已启用但未配置 API Key")
+
+        if llm_status == "未启用" and vision_status == "未启用":
+            fallback_notes.append("LLM/视觉均未启用，使用本地名称/标签匹配")
+
+        self.last_debug_info = {
+            "llm_status": llm_status,
+            "vision_status": vision_status,
+            "tags": list(llm_tags),
+            "keywords": list(dict.fromkeys([*llm_keywords, *local_keywords]))[:6],
+            "candidate_count": len(candidates),
+            "fallback": "；".join(dict.fromkeys([note for note in fallback_notes if note])),
+            "reason": llm_reason,
+        }
+        return [ImageModel.from_db_row(self._dict_to_row(r)) for r in selected_rows]
+
+    @staticmethod
+    def _extract_keywords(context: str) -> list[str]:
+        tokens = re.findall(r"[\u4e00-\u9fff]{1,8}|[a-zA-Z0-9_]{2,20}", context.lower())
+        stopwords = {
+            "我们",
+            "你们",
+            "他们",
+            "这个",
+            "那个",
+            "一下",
+            "就是",
+            "然后",
+            "可以",
+            "怎么",
+            "什么",
+            "今天",
+            "真的",
+            "有点",
+            "但是",
+            "还是",
+        }
+        result: list[str] = []
+        for token in tokens:
+            t = token.strip()
+            if not t or t in stopwords:
+                continue
+            candidates = [t]
+            if re.fullmatch(r"[\u4e00-\u9fff]+", t) and len(t) > 2:
+                for n in (2, 3, 4):
+                    if len(t) < n:
+                        continue
+                    for idx in range(0, len(t) - n + 1):
+                        candidates.append(t[idx : idx + n])
+            for cand in candidates:
+                if cand and cand not in stopwords and cand not in result:
+                    result.append(cand)
+        return result[:8]
+
+    def _rank_candidates(
+        self,
+        context: str,
+        all_images: list[dict],
+        llm_tags: list[str],
+        llm_keywords: list[str],
+        llm_image_ids: list[int],
+        local_keywords: list[str],
+    ) -> list[dict]:
+        llm_tag_set = {t.lower() for t in llm_tags}
+        keyword_set = {k.lower() for k in llm_keywords if k}
+        local_keyword_set = {k.lower() for k in local_keywords if k}
+        id_boost_map = {img_id: max(1.0, 3.0 - idx * 0.5) for idx, img_id in enumerate(llm_image_ids)}
+        scored: list[tuple[float, int, dict]] = []
+
+        for idx, image in enumerate(all_images):
+            tags = image.get("tags", []) or []
+            name = (image.get("name") or "").lower()
+            tags_l = [str(tag).lower() for tag in tags]
+            combined = " ".join([name, *tags_l])
+
+            score = 0.0
+            score += 2.5 * sum(1 for tag in tags_l if tag in llm_tag_set)
+            score += 1.5 * sum(1 for kw in keyword_set if kw in combined)
+            score += 1.0 * sum(1 for kw in local_keyword_set if kw in combined)
+            score += id_boost_map.get(image.get("id"), 0.0)
+            score += max(0.0, 0.3 - idx * 0.01)  # 小幅保留最近图片混入
+
+            tie_seed = f"{context}|{image.get('id')}"
+            tie_value = int(hashlib.md5(tie_seed.encode("utf-8")).hexdigest()[:8], 16)
+            scored.append((score, tie_value, image))
+
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [item[2] for item in scored]
 
     @staticmethod
     def _row_to_dict(row) -> dict:

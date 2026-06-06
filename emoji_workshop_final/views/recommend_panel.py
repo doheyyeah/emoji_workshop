@@ -130,10 +130,7 @@ class RecommendPanel(QWidget):
         self.error_label.setVisible(False)
         self.goto_settings_btn.setVisible(False)
         self._show_results(results)
-        if results:
-            self.hint_label.setText("✅ AI 连接成功，双击结果可复制到剪贴板")
-        else:
-            self.hint_label.setText("AI 已连接，暂无推荐结果，请先导入并标注标签")
+        self._update_diag_hint(results)
 
     def _on_recommend_failed(self, raw_msg: str) -> None:
         self.result_list.clear()
@@ -195,6 +192,27 @@ class RecommendPanel(QWidget):
                 item.setIcon(QIcon(scaled))
 
             self.result_list.addItem(item)
+
+    def _update_diag_hint(self, results) -> None:
+        debug = getattr(self.controller, "last_debug_info", {}) or {}
+        llm_status = debug.get("llm_status", "未启用")
+        vision_status = debug.get("vision_status", "未启用")
+        tags = ",".join(debug.get("tags", [])[:3]) or "-"
+        keywords = ",".join(debug.get("keywords", [])[:3]) or "-"
+        candidate_count = debug.get("candidate_count", 0)
+        fallback = debug.get("fallback", "")
+
+        if results:
+            base = "✅ 推荐完成"
+        else:
+            base = "暂无推荐结果"
+        diag = (
+            f"{base} | LLM:{llm_status} | 视觉:{vision_status} | "
+            f"标签:{tags} | 关键词:{keywords} | 候选:{candidate_count}"
+        )
+        if fallback:
+            diag += f" | 降级:{fallback}"
+        self.hint_label.setText(diag)
 
     def _on_single_click(self, item: QListWidgetItem) -> None:
         """单击发射 image_selected 信号"""

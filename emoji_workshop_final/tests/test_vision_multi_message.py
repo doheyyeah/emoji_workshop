@@ -34,11 +34,11 @@ def test_rerank_builds_multi_messages(monkeypatch):
     )
     monkeypatch.setattr(svc, "_image_to_data_url", lambda _: "data:image/jpeg;base64,abc")
 
-    candidates = [{"id": i, "file_path": f"/tmp/{i}.png"} for i in range(1, 8)]
+    candidates = [{"id": i, "file_path": f"/tmp/{i}.png", "name": f"图{i}", "tags": ["开心"]} for i in range(1, 8)]
     result = svc.rerank("我想睡觉", candidates, top_k=3)
 
     messages = captured["messages"]
-    assert len(messages) == 6  # 5 张候选图 + 1 条问题消息
+    assert len(messages) == 8  # 7 张候选图 + 1 条问题消息
     for msg in messages[:-1]:
         image_parts = [part for part in msg["content"] if part["type"] == "image_url"]
         assert len(image_parts) == 1

@@ -19,7 +19,7 @@ from PIL import Image
 class VisionService:
     """OpenAI 兼容视觉模型客户端，支持图片精排"""
 
-    MAX_IMAGES = 5  # 单次请求最多发送图片数，避免请求过大与兼容性问题
+    MAX_IMAGES = 10  # 单次请求最多发送图片数，避免请求过大与兼容性问题
 
     def __init__(self, base_url: str, api_key: str, model: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -35,6 +35,7 @@ class VisionService:
         context: str,
         candidate_images: list[dict],
         top_k: int = 3,
+        max_images: int | None = None,
         timeout: int = 60,
     ) -> list[dict]:
         """视觉精排：从候选图中选出最匹配的 top_k 张
@@ -54,7 +55,8 @@ class VisionService:
             raise RuntimeError("视觉精排未配置 API Key")
 
         # 截取最多 MAX_IMAGES 张候选
-        candidates = candidate_images[: self.MAX_IMAGES]
+        limit = max_images if (max_images and max_images > 0) else self.MAX_IMAGES
+        candidates = candidate_images[:limit]
         if not candidates:
             return []
 
@@ -119,7 +121,14 @@ class VisionService:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"图片 {idx}:"},
+                        {
+                            "type": "text",
+                            "text": (
+                                f"图片 {idx}:\n"
+                                f"名称: {img_info.get('name', '')}\n"
+                                f"标签: {', '.join(img_info.get('tags', []) or [])}"
+                            ),
+                        },
                         {"type": "image_url", "image_url": {"url": data_url}},
                     ],
                 }
@@ -134,7 +143,8 @@ class VisionService:
                         "text": (
                             f"用户在聊天中说:\"{context}\"\n\n"
                             f"上面给你 {len(messages)} 张候选表情包(编号 1 到 {len(messages)}),"
-                            f"请挑出最适合作为回应的 {top_k} 个,按合适程度降序。\n\n"
+                            f"请结合图片视觉内容、名称、标签，挑出最适合作为回应的 {top_k} 个,"
+                            f"按合适程度降序。\n\n"
                             "严格只返回编号,用英文逗号分隔,不要任何其他文字。\n例如:3,1,2"
                         ),
                     }

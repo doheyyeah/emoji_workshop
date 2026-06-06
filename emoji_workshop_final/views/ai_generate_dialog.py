@@ -1,6 +1,4 @@
 from pathlib import Path
-
-import requests
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QMovie, QPixmap
 from PyQt6.QtWidgets import (
@@ -346,17 +344,22 @@ class AIGenerateDialog(QDialog):
         api_key = self.apikey_edit.text().strip()
 
         def test_connection():
+            import requests
+
             if not base_url:
                 return False, "未配置 Base URL"
             if not api_key:
                 return False, "未配置 API Key"
-            resp = requests.get(
-                f"{base_url}/models",
-                headers={"Authorization": "Bearer " + api_key},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            return True, ""
+            try:
+                resp = requests.get(
+                    f"{base_url}/models",
+                    headers={"Authorization": "Bearer " + api_key},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                return True, ""
+            except requests.exceptions.RequestException as exc:
+                return False, f"连接失败，请检查 Base URL、API Key 或网络状态：{exc}"
 
         self.image_test_thread = ConnectionTestThread(test_connection, self)
         self.image_test_thread.result.connect(self._on_image_test_result)

@@ -1,6 +1,7 @@
 """通用 LLM 服务 - OpenAI 兼容接口"""
 
 import json
+import logging
 import re
 
 import requests
@@ -12,6 +13,7 @@ class LLMService:
     CANDIDATE_SUMMARY_LIMIT = 80  # 限制传给 LLM 的候选摘要数量，避免 prompt 过长导致稳定性下降
     MAX_CANDIDATE_TAGS = 8
     MAX_CANDIDATE_KEYWORDS = 8
+    CANDIDATE_SELECTION_TIMEOUT = 45
 
     def __init__(self, base_url: str, api_key: str, model: str):
         self.base_url = base_url.rstrip("/")
@@ -126,6 +128,12 @@ class LLMService:
         candidate_count: int = 20,
     ) -> dict:
         """让 LLM 只做候选范围筛选（不做最终排序）"""
+        if len(image_summaries) > self.CANDIDATE_SUMMARY_LIMIT:
+            logging.debug(
+                "[LLMService] 候选摘要过多，已截断到 %s 条（原始 %s 条）",
+                self.CANDIDATE_SUMMARY_LIMIT,
+                len(image_summaries),
+            )
         summaries = image_summaries[: self.CANDIDATE_SUMMARY_LIMIT]
         summary_lines = []
         valid_ids: set[int] = set()
@@ -169,7 +177,12 @@ class LLMService:
             f"4) 只做候选筛选，不做最终排序；\n"
             f"5) 用户输入的关键词/描述/上下文是最高优先级。"
         )
-        response = self.chat(prompt, system=system, temperature=0.15, timeout=45)
+        response = self.chat(
+            prompt,
+            system=system,
+            temperature=0.15,
+            timeout=self.CANDIDATE_SELECTION_TIMEOUT,
+        )
         parsed = self._parse_analysis_response(
             response,
             available_tags,

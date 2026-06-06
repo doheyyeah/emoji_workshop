@@ -108,9 +108,9 @@ class RecommendController:
             candidate_count=candidate_count,
         )
         if llm_status == "成功" and llm_seed_count == 0:
-            fallback_notes.append("LLM 粗筛无有效候选，已降级本地名称/标签召回")
+            fallback_notes.append("LLM 粗筛无有效候选，已降级本地文本匹配")
         elif llm_status == "成功" and llm_seed_count < candidate_count:
-            fallback_notes.append("LLM 候选不足，已使用本地名称/标签补齐")
+            fallback_notes.append("LLM 候选不足，已使用本地文本匹配补齐")
 
         vision_status = "未启用"
         selected_rows = candidates[:top_k]

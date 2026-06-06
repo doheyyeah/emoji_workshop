@@ -19,7 +19,7 @@ from PIL import Image
 class VisionService:
     """OpenAI 兼容视觉模型客户端，支持图片精排"""
 
-    MAX_IMAGES = 30  # 支持对完整候选池做精排，同时控制请求体大小
+    MAX_IMAGES = 30  # 与候选池上限一致；超过 30 时会截断，平衡请求体大小与 API 兼容性
 
     def __init__(self, base_url: str, api_key: str, model: str) -> None:
         self.base_url = base_url.rstrip("/")

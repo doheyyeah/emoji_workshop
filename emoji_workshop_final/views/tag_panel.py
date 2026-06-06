@@ -30,14 +30,20 @@ class TagPanel(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
 
         # === 模式切换 ===
         # 原来「筛选模式 / 打标签模式 / 并集 / 交集」全部挤在同一行，
-        # 右侧面板较窄时会把“打标签模式”的最后一个字遮住。
-        # 拆成两行后，模式选择和筛选逻辑选择互不挤压。
+        # 右侧面板较窄时会发生遮挡。拆成两行，并让并/交选项靠左显示，
+        # 可以避免“交集”被右边缘覆盖。
         mode_layout = QVBoxLayout()
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(8)
         self.filter_mode_radio = QRadioButton("🔍 筛选模式")
         self.tag_mode_radio = QRadioButton("✏️ 打标签模式")
+        self.filter_mode_radio.setMinimumHeight(26)
+        self.tag_mode_radio.setMinimumHeight(26)
         self.filter_mode_radio.setChecked(True)
         self.mode_group = QButtonGroup(self)
         self.mode_group.addButton(self.filter_mode_radio)
@@ -46,17 +52,21 @@ class TagPanel(QWidget):
 
         mode_layout.addWidget(self.filter_mode_radio)
         mode_layout.addWidget(self.tag_mode_radio)
-        # 移除 addStretch，如果是垂直布局的话通常不需要
         layout.addLayout(mode_layout)
 
         match_layout = QHBoxLayout()
-        match_layout.addStretch()
+        match_layout.setContentsMargins(0, 0, 0, 0)
+        match_layout.setSpacing(14)
+        match_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.union_radio = QRadioButton("并集")
         self.intersect_radio = QRadioButton("交集")
+        self.union_radio.setMinimumHeight(26)
+        self.intersect_radio.setMinimumHeight(26)
         self.union_radio.setChecked(True)
         self.union_radio.toggled.connect(self._on_match_mode_changed)
         match_layout.addWidget(self.union_radio)
         match_layout.addWidget(self.intersect_radio)
+        match_layout.addStretch(1)
         layout.addLayout(match_layout)
 
         self.mode_hint_label = QLabel("已选中 0 个标签作筛选条件")
@@ -70,12 +80,16 @@ class TagPanel(QWidget):
 
         # === 添加新标签 ===
         add_layout = QHBoxLayout()
+        add_layout.setContentsMargins(0, 0, 0, 0)
+        add_layout.setSpacing(8)
         self.tag_input = QLineEdit()
         self.tag_input.setPlaceholderText("输入标签名...")
+        self.tag_input.setMinimumHeight(34)
         self.add_btn = QPushButton("➕ 添加")
         self.add_btn.setObjectName("primaryButton")
+        self.add_btn.setMinimumHeight(36)
         self.add_btn.clicked.connect(self.add_tag)
-        add_layout.addWidget(self.tag_input)
+        add_layout.addWidget(self.tag_input, 1)
         add_layout.addWidget(self.add_btn)
         layout.addLayout(add_layout)
 
@@ -94,12 +108,13 @@ class TagPanel(QWidget):
         layout.addWidget(self.image_tags_label)
         self.image_tag_list = QListWidget()
         self.image_tag_list.setObjectName("imageTagList")
-        self.image_tag_list.setMaximumHeight(100)
+        self.image_tag_list.setMaximumHeight(110)
         layout.addWidget(self.image_tag_list)
 
         # === 给图片打标签 ===
         self.assign_btn = QPushButton("🏷️ 添加到选中图片")
         self.assign_btn.setObjectName("primaryButton")
+        self.assign_btn.setMinimumHeight(36)
         self.assign_btn.setEnabled(False)
         self.assign_btn.clicked.connect(self.assign_tags_to_image)
         layout.addWidget(self.assign_btn)

@@ -27,6 +27,23 @@ from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
 
+class ConnectionTestThread(QThread):
+    """后台执行一次连接测试"""
+
+    result = pyqtSignal(bool, str)
+
+    def __init__(self, test_func, parent=None):
+        super().__init__(parent)
+        self.test_func = test_func
+
+    def run(self):
+        try:
+            success, message = self.test_func()
+            self.result.emit(success, message)
+        except Exception as exc:
+            self.result.emit(False, str(exc))
+
+
 class AIGenerateDialog(QDialog):
     """AI 文生图与 GIF 生成对话框"""
 
@@ -40,6 +57,8 @@ class AIGenerateDialog(QDialog):
         self.sticker_path = None
         self.sticker_worker = None
         self.sticker_movie = None
+        self.image_test_thread = None
+        self.gif_test_thread = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
         self.setMinimumSize(650, 760)
@@ -87,6 +106,14 @@ class AIGenerateDialog(QDialog):
         self.model_edit = QLineEdit()
         settings_layout.addRow("Model:", self.model_edit)
 
+        self.image_test_btn = QPushButton("测试连接")
+        self.image_test_btn.setObjectName("secondaryButton")
+        self.image_test_btn.clicked.connect(self._test_image_connection)
+        settings_layout.addRow("", self.image_test_btn)
+
+        self.image_test_result = QLabel("未测试")
+        settings_layout.addRow("状态:", self.image_test_result)
+
         size_layout = QHBoxLayout()
         self.width_spin = QSpinBox()
         self.width_spin.setRange(256, 1024)
@@ -116,7 +143,7 @@ class AIGenerateDialog(QDialog):
         layout.addWidget(settings_group)
 
         btn_row = QHBoxLayout()
-        self.generate_btn = QPushButton("🎨 开始生成")
+        self.generate_btn = QPushButton("🖼 生成静图")
         self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.clicked.connect(self._start_generation)
         self.stop_btn = QPushButton("⏹ 停止生成")
@@ -305,43 +332,69 @@ class AIGenerateDialog(QDialog):
             model=self.gif_model_edit.text().strip(),
         )
 
+    def _test_image_connection(self):
+        if self.image_test_thread and self.image_test_thread.isRunning():
+            return
+
+        self._on_provider_field_changed()
+        self.image_test_btn.setEnabled(False)
+        self.image_test_result.setText("测试中...")
+        self.image_test_result.setStyleSheet("")
+        self.image_test_result.setToolTip("")
+
+        base_url = self.base_url_edit.text().strip().rstrip("/")
+        api_key = self.apikey_edit.text().strip()
+
+        def test_connection():
+            return self.ai.providers["custom"].test_connection(base_url, api_key)
+
+        self.image_test_thread = ConnectionTestThread(test_connection, self)
+        self.image_test_thread.result.connect(self._on_image_test_result)
+        self.image_test_thread.finished.connect(self._cleanup_image_test_thread)
+        self.image_test_thread.start()
+
+    def _cleanup_image_test_thread(self):
+        self.image_test_thread = None
+
+    def _on_image_test_result(self, success: bool, message: str):
+        self.image_test_btn.setEnabled(True)
+        if success:
+            self.image_test_result.setText("✅ 连接成功")
+            self.image_test_result.setStyleSheet("color: #51cf66;")
+            self.image_test_result.setToolTip("")
+        else:
+            self.image_test_result.setText("❌ 连接失败")
+            self.image_test_result.setStyleSheet("color: #ff6b6b;")
+            self.image_test_result.setToolTip(message)
+
     def _test_gif_connection(self):
-        class ReplicateTestThread(QThread):
-            result = pyqtSignal(bool, str)
-
-            def __init__(self, base_url: str, api_key: str, model: str, parent=None):
-                super().__init__(parent)
-                self.base_url = base_url
-                self.api_key = api_key
-                self.model = model
-
-            def run(self):
-                try:
-                    service = ReplicateService(
-                        base_url=self.base_url,
-                        api_key=self.api_key,
-                        model=self.model,
-                    )
-                    ok, msg = service.test_connection()
-                    self.result.emit(ok, msg)
-                except Exception as exc:
-                    self.result.emit(False, str(exc))
+        if self.gif_test_thread and self.gif_test_thread.isRunning():
+            return
 
         self._on_replicate_field_changed()
+        self.gif_test_btn.setEnabled(False)
         self.gif_test_result.setText("测试中...")
         self.gif_test_result.setStyleSheet("")
         self.gif_test_result.setToolTip("")
 
-        self.gif_test_thread = ReplicateTestThread(
-            base_url=self.gif_base_url_edit.text().strip(),
-            api_key=self.gif_apikey_edit.text().strip(),
-            model=self.gif_model_edit.text().strip() or "fofr/sticker-maker",
-            parent=self,
-        )
+        base_url = self.gif_base_url_edit.text().strip()
+        api_key = self.gif_apikey_edit.text().strip()
+        model = self.gif_model_edit.text().strip() or "fofr/sticker-maker"
+
+        def test_connection():
+            service = ReplicateService(base_url=base_url, api_key=api_key, model=model)
+            return service.test_connection()
+
+        self.gif_test_thread = ConnectionTestThread(test_connection, self)
         self.gif_test_thread.result.connect(self._on_gif_test_result)
+        self.gif_test_thread.finished.connect(self._cleanup_gif_test_thread)
         self.gif_test_thread.start()
 
+    def _cleanup_gif_test_thread(self):
+        self.gif_test_thread = None
+
     def _on_gif_test_result(self, success: bool, message: str):
+        self.gif_test_btn.setEnabled(True)
         if success:
             self.gif_test_result.setText("✅ 连接成功")
             self.gif_test_result.setStyleSheet("color: #51cf66;")

@@ -8,6 +8,24 @@ class CustomProvider:
 
     name = "🛠 自定义"
 
+    def test_connection(self, base_url: str, api_key: str) -> tuple[bool, str]:
+        base_url = base_url.strip().rstrip("/")
+        api_key = api_key.strip()
+        if not base_url:
+            return False, "未配置 Base URL"
+        if not api_key:
+            return False, "未配置 API Key"
+        try:
+            resp = requests.get(
+                f"{base_url}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return True, ""
+        except requests.exceptions.RequestException as exc:
+            return False, f"连接失败，请检查 Base URL、API Key 或网络状态：{exc}"
+
     def generate(self, prompt: str, width: int = 512, height: int = 512, **kwargs) -> bytes:
         api_key = kwargs.get("api_key", "").strip()
         model = kwargs.get("model", "").strip()

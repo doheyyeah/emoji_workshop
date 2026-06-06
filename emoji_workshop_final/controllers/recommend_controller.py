@@ -129,7 +129,10 @@ class RecommendController:
                     vision_status = "成功"
                 except Exception as exc:
                     vision_status = "失败"
-                    fallback_notes.append("视觉精排失败，已降级为 LLM 粗筛 + 本地文本排序")
+                    if llm_status == "成功":
+                        fallback_notes.append("视觉精排失败，已降级为 LLM 粗筛 + 本地文本排序")
+                    else:
+                        fallback_notes.append("视觉精排失败，已降级本地文本排序")
                     logging.debug("[RecommendController] 视觉精排失败，降级文本排序: %s", exc)
             else:
                 vision_status = "未配置Key"

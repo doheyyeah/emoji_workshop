@@ -9,6 +9,8 @@ import requests
 class LLMService:
     """通用 LLM 客户端，使用 OpenAI 兼容接口"""
 
+    CANDIDATE_SUMMARY_LIMIT = 80  # 限制传给 LLM 的候选摘要数量，避免 prompt 过长导致稳定性下降
+
     def __init__(self, base_url: str, api_key: str, model: str):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -122,7 +124,7 @@ class LLMService:
         candidate_count: int = 20,
     ) -> dict:
         """让 LLM 只做候选范围筛选（不做最终排序）"""
-        summaries = image_summaries[:80]
+        summaries = image_summaries[: self.CANDIDATE_SUMMARY_LIMIT]
         summary_lines = []
         valid_ids: set[int] = set()
         for item in summaries:

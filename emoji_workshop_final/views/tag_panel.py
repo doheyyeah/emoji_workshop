@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QListWidget, QListWidgetItem, QColorDialog,
+    QLineEdit, QListWidget, QListWidgetItem,
     QMessageBox, QMenu, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -35,7 +35,7 @@ class TagPanel(QWidget):
         # 原来「筛选模式 / 打标签模式 / 并集 / 交集」全部挤在同一行，
         # 右侧面板较窄时会把“打标签模式”的最后一个字遮住。
         # 拆成两行后，模式选择和筛选逻辑选择互不挤压。
-        mode_layout = QHBoxLayout()
+        mode_layout = QVBoxLayout()
         self.filter_mode_radio = QRadioButton("🔍 筛选模式")
         self.tag_mode_radio = QRadioButton("✏️ 打标签模式")
         self.filter_mode_radio.setChecked(True)
@@ -46,7 +46,7 @@ class TagPanel(QWidget):
 
         mode_layout.addWidget(self.filter_mode_radio)
         mode_layout.addWidget(self.tag_mode_radio)
-        mode_layout.addStretch()
+        # 移除 addStretch，如果是垂直布局的话通常不需要
         layout.addLayout(mode_layout)
 
         match_layout = QHBoxLayout()
@@ -72,15 +72,10 @@ class TagPanel(QWidget):
         add_layout = QHBoxLayout()
         self.tag_input = QLineEdit()
         self.tag_input.setPlaceholderText("输入标签名...")
-        self.color_btn = QPushButton("🎨")
-        self.color_btn.setObjectName("secondaryButton")
-        self.color_btn.setFixedWidth(40)
-        self.color_btn.clicked.connect(self.pick_color)
         self.add_btn = QPushButton("➕ 添加")
         self.add_btn.setObjectName("primaryButton")
         self.add_btn.clicked.connect(self.add_tag)
         add_layout.addWidget(self.tag_input)
-        add_layout.addWidget(self.color_btn)
         add_layout.addWidget(self.add_btn)
         layout.addLayout(add_layout)
 
@@ -109,21 +104,12 @@ class TagPanel(QWidget):
         self.assign_btn.clicked.connect(self.assign_tags_to_image)
         layout.addWidget(self.assign_btn)
 
-        self.selected_color = "#FF6B6B"
-        self.color_btn.setStyleSheet(f"background-color: {self.selected_color};")
-
-    def pick_color(self):
-        color = QColorDialog.getColor()
-        if color.isValid():
-            self.selected_color = color.name()
-            self.color_btn.setStyleSheet(f"background-color: {self.selected_color};")
-
     def add_tag(self):
         name = self.tag_input.text().strip()
         if not name:
             QMessageBox.warning(self, "提示", "标签名不能为空")
             return
-        self.db.add_tag(name, self.selected_color)
+        self.db.add_tag(name)
         self.tag_input.clear()
         self.load_tags()
 
@@ -131,10 +117,9 @@ class TagPanel(QWidget):
         self.tag_list.clear()
         rows = self.db.get_all_tags()
         for row in rows:
-            tag_id, name, color = row
+            tag_id, name, _ = row
             item = QListWidgetItem(name)
             item.setData(Qt.ItemDataRole.UserRole, tag_id)
-            item.setBackground(QColor(color))
             self.tag_list.addItem(item)
 
     def _selected_tag_items(self):
@@ -227,9 +212,8 @@ class TagPanel(QWidget):
         if len(image_ids) == 1:
             rows = self.db.get_image_tags(image_ids[0])
             for row in rows:
-                _, name, color = row
+                _, name, _ = row
                 item = QListWidgetItem(name)
-                item.setBackground(QColor(color))
                 self.image_tag_list.addItem(item)
             return
 
@@ -247,11 +231,10 @@ class TagPanel(QWidget):
 
         total = len(image_ids)
         for _, info in tag_counts.items():
-            _, name, color = info["row"]
+            _, name, _ = info["row"]
             cnt = info["count"]
             label = name if cnt == total else f"{name}（{cnt}/{total}）"
             item = QListWidgetItem(label)
-            item.setBackground(QColor(color))
             self.image_tag_list.addItem(item)
 
     def assign_tags_to_image(self):

@@ -177,10 +177,12 @@ class LLMService:
         )
 
         filtered_ids: list[int] = []
+        seen_ids: set[int] = set()
         for image_id in parsed["image_ids"]:
-            if image_id not in valid_ids or image_id in filtered_ids:
+            if image_id not in valid_ids or image_id in seen_ids:
                 continue
             filtered_ids.append(image_id)
+            seen_ids.add(image_id)
 
         parsed["image_ids"] = filtered_ids[:candidate_count]
         parsed["tags"] = parsed["tags"][: self.MAX_CANDIDATE_TAGS]

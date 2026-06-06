@@ -158,6 +158,7 @@ class RecommendController:
 
     @staticmethod
     def _calc_candidate_count(top_k: int) -> int:
+        """根据 top_k 计算候选池大小，并限制在最小/最大阈值内。"""
         return min(
             max(top_k * RecommendController.CANDIDATE_MULTIPLIER, RecommendController.MIN_CANDIDATE_COUNT),
             RecommendController.MAX_CANDIDATE_COUNT,
@@ -240,6 +241,7 @@ class RecommendController:
     def _build_candidate_scope(
         ranked_all: list[dict], preferred_ids: list[int], candidate_count: int
     ) -> tuple[list[dict], int]:
+        """构建候选池并返回 (候选列表, LLM 种子命中数)。"""
         id_map = {img.get("id"): img for img in ranked_all}
         selected: list[dict] = []
         seen: set[int] = set()

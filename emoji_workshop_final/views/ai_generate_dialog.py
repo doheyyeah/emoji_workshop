@@ -28,6 +28,23 @@ from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
 
+class ConnectionTestThread(QThread):
+    """后台执行一次连接测试"""
+
+    result = pyqtSignal(bool, str)
+
+    def __init__(self, test_func, parent=None):
+        super().__init__(parent)
+        self.test_func = test_func
+
+    def run(self):
+        try:
+            success, message = self.test_func()
+            self.result.emit(success, message)
+        except Exception as exc:
+            self.result.emit(False, str(exc))
+
+
 class AIGenerateDialog(QDialog):
     """AI 文生图与 GIF 生成对话框"""
 
@@ -319,47 +336,35 @@ class AIGenerateDialog(QDialog):
         if self.image_test_thread and self.image_test_thread.isRunning():
             return
 
-        class ImageTestThread(QThread):
-            result = pyqtSignal(bool, str)
-
-            def __init__(self, base_url: str, api_key: str, parent=None):
-                super().__init__(parent)
-                self.base_url = base_url
-                self.api_key = api_key
-
-            def run(self):
-                try:
-                    base_url = self.base_url.rstrip("/")
-                    if not base_url:
-                        self.result.emit(False, "未配置 Base URL")
-                        return
-                    if not self.api_key:
-                        self.result.emit(False, "未配置 API Key")
-                        return
-                    resp = requests.get(
-                        f"{base_url}/models",
-                        headers={"Authorization": "Bearer " + self.api_key},
-                        timeout=15,
-                    )
-                    resp.raise_for_status()
-                    self.result.emit(True, "")
-                except Exception as exc:
-                    self.result.emit(False, str(exc))
-
         self._on_provider_field_changed()
         self.image_test_btn.setEnabled(False)
         self.image_test_result.setText("测试中...")
         self.image_test_result.setStyleSheet("")
         self.image_test_result.setToolTip("")
 
-        self.image_test_thread = ImageTestThread(
-            base_url=self.base_url_edit.text().strip(),
-            api_key=self.apikey_edit.text().strip(),
-            parent=self,
-        )
+        base_url = self.base_url_edit.text().strip().rstrip("/")
+        api_key = self.apikey_edit.text().strip()
+
+        def test_connection():
+            if not base_url:
+                return False, "未配置 Base URL"
+            if not api_key:
+                return False, "未配置 API Key"
+            resp = requests.get(
+                f"{base_url}/models",
+                headers={"Authorization": "Bearer " + api_key},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            return True, ""
+
+        self.image_test_thread = ConnectionTestThread(test_connection, self)
         self.image_test_thread.result.connect(self._on_image_test_result)
-        self.image_test_thread.finished.connect(lambda: setattr(self, "image_test_thread", None))
+        self.image_test_thread.finished.connect(self._cleanup_image_test_thread)
         self.image_test_thread.start()
+
+    def _cleanup_image_test_thread(self):
+        self.image_test_thread = None
 
     def _on_image_test_result(self, success: bool, message: str):
         self.image_test_btn.setEnabled(True)
@@ -373,38 +378,20 @@ class AIGenerateDialog(QDialog):
             self.image_test_result.setToolTip(message)
 
     def _test_gif_connection(self):
-        class ReplicateTestThread(QThread):
-            result = pyqtSignal(bool, str)
-
-            def __init__(self, base_url: str, api_key: str, model: str, parent=None):
-                super().__init__(parent)
-                self.base_url = base_url
-                self.api_key = api_key
-                self.model = model
-
-            def run(self):
-                try:
-                    service = ReplicateService(
-                        base_url=self.base_url,
-                        api_key=self.api_key,
-                        model=self.model,
-                    )
-                    ok, msg = service.test_connection()
-                    self.result.emit(ok, msg)
-                except Exception as exc:
-                    self.result.emit(False, str(exc))
-
         self._on_replicate_field_changed()
         self.gif_test_result.setText("测试中...")
         self.gif_test_result.setStyleSheet("")
         self.gif_test_result.setToolTip("")
 
-        self.gif_test_thread = ReplicateTestThread(
-            base_url=self.gif_base_url_edit.text().strip(),
-            api_key=self.gif_apikey_edit.text().strip(),
-            model=self.gif_model_edit.text().strip() or "fofr/sticker-maker",
-            parent=self,
-        )
+        base_url = self.gif_base_url_edit.text().strip()
+        api_key = self.gif_apikey_edit.text().strip()
+        model = self.gif_model_edit.text().strip() or "fofr/sticker-maker"
+
+        def test_connection():
+            service = ReplicateService(base_url=base_url, api_key=api_key, model=model)
+            return service.test_connection()
+
+        self.gif_test_thread = ConnectionTestThread(test_connection, self)
         self.gif_test_thread.result.connect(self._on_gif_test_result)
         self.gif_test_thread.start()
 

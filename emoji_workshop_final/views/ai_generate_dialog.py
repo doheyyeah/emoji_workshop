@@ -21,8 +21,8 @@ from PyQt6.QtWidgets import (
 )
 
 from services.ai_service import AIService
+from services.animation_service import AIAnimationService, AnimationGenerateWorker
 from services.database_service import DatabaseService
-from services.replicate_service import ReplicateService, StickerGenerateWorker
 from utils.config_manager import ConfigManager
 from utils.file_scanner import FileScanner
 
@@ -45,7 +45,7 @@ class ConnectionTestThread(QThread):
 
 
 class AIGenerateDialog(QDialog):
-    """AI 文生图与 GIF 生成对话框"""
+    """AI 文生图与动图生成对话框"""
 
     def __init__(self, db_service: DatabaseService, parent=None):
         super().__init__(parent)
@@ -235,10 +235,10 @@ class AIGenerateDialog(QDialog):
         self.gif_status_label = QLabel("就绪")
         layout.addWidget(self.gif_status_label)
 
-        preview_group = QGroupBox("GIF 预览")
+        preview_group = QGroupBox("动图预览")
         preview_layout = QVBoxLayout()
 
-        self.gif_preview = QLabel("生成的 GIF 将在这里预览")
+        self.gif_preview = QLabel("生成的动图将在这里预览")
         self.gif_preview.setObjectName("previewPaneSmall")
         self.gif_preview.setProperty("hasImage", False)
         self.gif_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -303,17 +303,32 @@ class AIGenerateDialog(QDialog):
         self.base_url_edit.setText(cfg.get("base_url", ""))
         self.model_edit.setText(cfg.get("model", ""))
 
-        replicate_cfg = self.config.get_replicate_config()
-        self.gif_apikey_edit.setText(replicate_cfg.get("api_key", ""))
-        self.gif_base_url_edit.setText(replicate_cfg.get("base_url", ""))
-        self.gif_model_edit.setText(replicate_cfg.get("model", ""))
+        animation_cfg = self._get_animation_config()
+        self.gif_apikey_edit.setText(animation_cfg.get("api_key", ""))
+        self.gif_base_url_edit.setText(animation_cfg.get("base_url", ""))
+        self.gif_model_edit.setText(animation_cfg.get("model", ""))
 
         self.apikey_edit.textChanged.connect(self._on_provider_field_changed)
         self.base_url_edit.textChanged.connect(self._on_provider_field_changed)
         self.model_edit.textChanged.connect(self._on_provider_field_changed)
-        self.gif_apikey_edit.textChanged.connect(self._on_replicate_field_changed)
-        self.gif_base_url_edit.textChanged.connect(self._on_replicate_field_changed)
-        self.gif_model_edit.textChanged.connect(self._on_replicate_field_changed)
+        self.gif_apikey_edit.textChanged.connect(self._on_animation_field_changed)
+        self.gif_base_url_edit.textChanged.connect(self._on_animation_field_changed)
+        self.gif_model_edit.textChanged.connect(self._on_animation_field_changed)
+
+    def _get_animation_config(self) -> dict:
+        cfg = self.config.get("animation_provider", {}) or {}
+        if not cfg:
+            cfg = self.config.get_replicate_config()
+        return {
+            "base_url": cfg.get("base_url", ""),
+            "api_key": cfg.get("api_key", ""),
+            "model": cfg.get("model", ""),
+        }
+
+    def _set_animation_config(self, base_url: str, api_key: str, model: str):
+        self.config.set("animation_provider.base_url", base_url)
+        self.config.set("animation_provider.api_key", api_key)
+        self.config.set("animation_provider.model", model)
 
     def _on_provider_field_changed(self):
         self.config.set_ai_provider_config(
@@ -325,8 +340,8 @@ class AIGenerateDialog(QDialog):
         )
         self.config.set("ai_providers.active", "custom")
 
-    def _on_replicate_field_changed(self):
-        self.config.set_replicate_config(
+    def _on_animation_field_changed(self):
+        self._set_animation_config(
             base_url=self.gif_base_url_edit.text().strip(),
             api_key=self.gif_apikey_edit.text().strip(),
             model=self.gif_model_edit.text().strip(),
@@ -371,7 +386,7 @@ class AIGenerateDialog(QDialog):
         if self.gif_test_thread and self.gif_test_thread.isRunning():
             return
 
-        self._on_replicate_field_changed()
+        self._on_animation_field_changed()
         self.gif_test_btn.setEnabled(False)
         self.gif_test_result.setText("测试中...")
         self.gif_test_result.setStyleSheet("")
@@ -379,10 +394,10 @@ class AIGenerateDialog(QDialog):
 
         base_url = self.gif_base_url_edit.text().strip()
         api_key = self.gif_apikey_edit.text().strip()
-        model = self.gif_model_edit.text().strip() or "fofr/sticker-maker"
+        model = self.gif_model_edit.text().strip() or AIAnimationService.DEFAULT_MODEL
 
         def test_connection():
-            service = ReplicateService(base_url=base_url, api_key=api_key, model=model)
+            service = AIAnimationService(base_url=base_url, api_key=api_key, model=model)
             return service.test_connection()
 
         self.gif_test_thread = ConnectionTestThread(test_connection, self)
@@ -503,10 +518,10 @@ class AIGenerateDialog(QDialog):
             QMessageBox.warning(self, "提示", "请选择保存文件夹")
             return
 
-        self._on_replicate_field_changed()
+        self._on_animation_field_changed()
         base_url = self.gif_base_url_edit.text().strip()
         api_key = self.gif_apikey_edit.text().strip()
-        model = self.gif_model_edit.text().strip() or "fofr/sticker-maker"
+        model = self.gif_model_edit.text().strip() or AIAnimationService.DEFAULT_MODEL
 
         if not base_url or not api_key:
             QMessageBox.warning(
@@ -519,17 +534,17 @@ class AIGenerateDialog(QDialog):
         import hashlib
         import time
 
-        filename = f"sticker_{hashlib.md5(f'{prompt}:{time.time()}'.encode()).hexdigest()[:8]}.gif"
+        filename = f"animation_{hashlib.md5(f'{prompt}:{time.time()}'.encode()).hexdigest()[:8]}.gif"
         output_path = str(Path(save_dir) / filename)
 
-        service = ReplicateService(base_url=base_url, api_key=api_key, model=model)
+        service = AIAnimationService(base_url=base_url, api_key=api_key, model=model)
         self.gif_generate_btn.setEnabled(False)
         self.gif_save_btn.setEnabled(False)
-        self.gif_preview.setText("正在生成 GIF...")
+        self.gif_preview.setText("正在生成动图...")
         self.gif_preview.setToolTip("")
         self.gif_status_label.setText("正在提交任务…")
 
-        self.sticker_worker = StickerGenerateWorker(
+        self.sticker_worker = AnimationGenerateWorker(
             service=service,
             prompt=prompt,
             output_path=output_path,
@@ -546,29 +561,41 @@ class AIGenerateDialog(QDialog):
     def _on_sticker_progress(self, message: str):
         self.gif_status_label.setText(message)
 
-    def _on_sticker_finished(self, gif_path: str):
-        self.sticker_path = gif_path
+    def _on_sticker_finished(self, animation_path: str):
+        self.sticker_path = animation_path
         self.gif_status_label.setText("动图生成成功")
-        self.gif_save_btn.setEnabled(True)
+        self.gif_save_btn.setEnabled(Path(animation_path).suffix.lower() in FileScanner.SUPPORTED_FORMATS)
 
         if self.sticker_movie:
             self.sticker_movie.stop()
             self.sticker_movie = None
-        self.sticker_movie = QMovie(gif_path)
-        if self.sticker_movie.isValid():
-            self.gif_preview.setMovie(self.sticker_movie)
-            self.gif_preview.setProperty("hasImage", True)
-            self.gif_preview.style().unpolish(self.gif_preview)
-            self.gif_preview.style().polish(self.gif_preview)
-            self.sticker_movie.start()
+
+        suffix = Path(animation_path).suffix.lower()
+        if suffix == ".gif":
+            self.sticker_movie = QMovie(animation_path)
+            if self.sticker_movie.isValid():
+                self.gif_preview.setMovie(self.sticker_movie)
+                self.gif_preview.setProperty("hasImage", True)
+                self.gif_preview.style().unpolish(self.gif_preview)
+                self.gif_preview.style().polish(self.gif_preview)
+                self.sticker_movie.start()
+            else:
+                self._show_static_or_file_preview(animation_path)
         else:
-            pixmap = QPixmap(gif_path)
-            self.gif_preview.setPixmap(pixmap)
-            self.gif_preview.setProperty("hasImage", True)
-            self.gif_preview.style().unpolish(self.gif_preview)
-            self.gif_preview.style().polish(self.gif_preview)
+            self._show_static_or_file_preview(animation_path)
 
         QMessageBox.information(self, "完成", "动图生成成功！")
+
+    def _show_static_or_file_preview(self, file_path: str):
+        pixmap = QPixmap(file_path)
+        if not pixmap.isNull():
+            self.gif_preview.setPixmap(pixmap)
+            self.gif_preview.setProperty("hasImage", True)
+        else:
+            self.gif_preview.setText(f"动图已生成：\n{file_path}")
+            self.gif_preview.setProperty("hasImage", False)
+        self.gif_preview.style().unpolish(self.gif_preview)
+        self.gif_preview.style().polish(self.gif_preview)
 
     def _on_sticker_error(self, message: str):
         self.gif_status_label.setText("生成失败")
@@ -599,12 +626,14 @@ class AIGenerateDialog(QDialog):
 
     def _import_generated_sticker(self):
         if not self.sticker_path or not Path(self.sticker_path).exists():
-            QMessageBox.warning(self, "错误", "没有可导入的 GIF")
+            QMessageBox.warning(self, "错误", "没有可导入的动图")
             return
         info = FileScanner.get_image_info(self.sticker_path)
         if info:
             self.db.add_image(**info)
-            QMessageBox.information(self, "成功", "GIF 已保存到库")
+            QMessageBox.information(self, "成功", "动图已保存到库")
+        else:
+            QMessageBox.warning(self, "提示", "当前文件格式暂不支持保存到图片库，可在保存目录中直接查看。")
 
     def closeEvent(self, event):
         if self.worker and self.worker.isRunning():

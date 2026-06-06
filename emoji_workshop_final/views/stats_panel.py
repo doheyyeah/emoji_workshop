@@ -66,7 +66,7 @@ class StatsPanel(QWidget):
         header_layout.addWidget(title_label)
         header_layout.addStretch()
         self.clear_button = QPushButton("🗑 清空历史记录")
-        self.clear_button.setObjectName("dangerButton")
+        self.clear_button.setObjectName("primaryButton")
         self.clear_button.setToolTip("清空全部使用历史记录，所有统计将回到初始的空状态")
         self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_button.clicked.connect(self.on_clear_history_clicked)

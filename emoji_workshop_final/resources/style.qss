@@ -66,29 +66,29 @@ QPushButton#primaryButton {
 #mainWindow[theme="dark"] QPushButton#secondaryButton,
 QDialog QPushButton#secondaryButton,
 #reportDialog QPushButton#secondaryButton {
-    background-color: #5b8def;
-    color: white;
-    border: none;
+    background-color: #eef4ff;
+    color: #4169b1;
+    border: 1px solid #cfe0ff;
 }
 
 #mainWindow[theme="dark"] QPushButton#secondaryButton:hover,
 QDialog QPushButton#secondaryButton:hover,
 #reportDialog QPushButton#secondaryButton:hover {
-    background-color: #6f9cff;
-    color: white;
+    background-color: #e1ecff;
+    color: #31589c;
 }
 
 #mainWindow[theme="dark"] QPushButton#dangerButton,
 QDialog QPushButton#dangerButton,
 #reportDialog QPushButton#dangerButton {
-    background-color: #5b8def;
+    background-color: #ff6b7a;
     color: white;
 }
 
 #mainWindow[theme="dark"] QPushButton#dangerButton:hover,
 QDialog QPushButton#dangerButton:hover,
 #reportDialog QPushButton#dangerButton:hover {
-    background-color: #6f9cff;
+    background-color: #ff5265;
 }
 
 /* ===== Inputs ===== */

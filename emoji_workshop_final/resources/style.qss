@@ -98,30 +98,34 @@ QDialog QPushButton#dangerButton:hover,
 /* ===== Inputs ===== */
 #mainWindow[theme="dark"] QLineEdit,
 #mainWindow[theme="dark"] QComboBox,
+#mainWindow[theme="dark"] QComboBox QLineEdit,
 #mainWindow[theme="dark"] QTextEdit,
 QDialog QLineEdit,
 QDialog QComboBox,
+QDialog QComboBox QLineEdit,
 QDialog QTextEdit,
 QDialog QTextBrowser,
 #reportDialog QComboBox,
 #reportDialog QTextBrowser {
-    background-color: #ffffff;
+    background-color: #fffaf2;
     color: #263445;
-    border: 1px solid #d9e3f0;
+    border: 1px solid #e4d5bd;
     padding: 7px 9px;
     border-radius: 10px;
-    selection-background-color: #bcd2ff;
+    selection-background-color: #ffe0a6;
     selection-color: #1f2f46;
 }
 
 #mainWindow[theme="dark"] QLineEdit:focus,
 #mainWindow[theme="dark"] QComboBox:focus,
+#mainWindow[theme="dark"] QComboBox QLineEdit:focus,
 #mainWindow[theme="dark"] QTextEdit:focus,
 QDialog QLineEdit:focus,
 QDialog QComboBox:focus,
+QDialog QComboBox QLineEdit:focus,
 QDialog QTextEdit:focus {
-    border: 2px solid #7ca7ff;
-    background-color: #ffffff;
+    border: 2px solid #f2b84b;
+    background-color: #fffdf8;
 }
 
 #mainWindow[theme="dark"] QComboBox::drop-down,
@@ -146,12 +150,12 @@ QDialog QComboBox::down-arrow,
 
 #mainWindow[theme="dark"] QComboBox QAbstractItemView,
 QDialog QComboBox QAbstractItemView {
-    background-color: #ffffff;
+    background-color: #fffaf2;
     color: #263445;
-    border: 1px solid #d9e3f0;
+    border: 1px solid #e4d5bd;
     border-radius: 8px;
-    selection-background-color: #e7efff;
-    selection-color: #244f99;
+    selection-background-color: #fff0cf;
+    selection-color: #7a4c00;
 }
 
 /* ===== Lists / Cards ===== */
@@ -162,11 +166,17 @@ QDialog QListWidget,
 #mainWindow[theme="dark"] QListWidget#imageTagList,
 #mainWindow[theme="dark"] QListWidget#rankingList,
 #reportDialog QTextBrowser#reportBrowser {
-    background-color: #ffffff;
+    background-color: #fffaf2;
     color: #263445;
-    border: 1px solid #dfe8f5;
+    border: 1px solid #e4d5bd;
     border-radius: 14px;
     padding: 6px;
+}
+
+#mainWindow[theme="dark"] QListWidget#thumbList,
+#mainWindow[theme="dark"] QListWidget#thumbList::viewport {
+    background-color: #fff8ec;
+    color: #263445;
 }
 
 #mainWindow[theme="dark"] QListWidget::item,
@@ -178,12 +188,12 @@ QDialog QListWidget::item {
 
 #mainWindow[theme="dark"] QListWidget::item:hover,
 QDialog QListWidget::item:hover {
-    background-color: #f0f5ff;
+    background-color: #fff0cf;
 }
 
 #mainWindow[theme="dark"] QListWidget::item:selected,
 QDialog QListWidget::item:selected {
-    background-color: #dfeaff;
+    background-color: #dce8ff;
     color: #204f9f;
 }
 
@@ -458,40 +468,58 @@ QDialog QProgressBar::chunk {
 /* ===== Scrollbars ===== */
 #mainWindow[theme="dark"] QScrollBar:vertical,
 QDialog QScrollBar:vertical {
-    background: transparent;
+    background: #f6ead8;
     width: 10px;
     margin: 2px;
+    border-radius: 5px;
 }
 
 #mainWindow[theme="dark"] QScrollBar::handle:vertical,
 QDialog QScrollBar::handle:vertical {
-    background: #cbd8ea;
+    background: #d7b98f;
     border-radius: 5px;
     min-height: 24px;
 }
 
 #mainWindow[theme="dark"] QScrollBar::handle:vertical:hover,
 QDialog QScrollBar::handle:vertical:hover {
-    background: #9fb7d7;
+    background: #c59b62;
+}
+
+#mainWindow[theme="dark"] QScrollBar::add-page:vertical,
+#mainWindow[theme="dark"] QScrollBar::sub-page:vertical,
+QDialog QScrollBar::add-page:vertical,
+QDialog QScrollBar::sub-page:vertical {
+    background: #f6ead8;
+    border-radius: 5px;
 }
 
 #mainWindow[theme="dark"] QScrollBar:horizontal,
 QDialog QScrollBar:horizontal {
-    background: transparent;
+    background: #f6ead8;
     height: 10px;
     margin: 2px;
+    border-radius: 5px;
 }
 
 #mainWindow[theme="dark"] QScrollBar::handle:horizontal,
 QDialog QScrollBar::handle:horizontal {
-    background: #cbd8ea;
+    background: #d7b98f;
     border-radius: 5px;
     min-width: 24px;
 }
 
 #mainWindow[theme="dark"] QScrollBar::handle:horizontal:hover,
 QDialog QScrollBar::handle:horizontal:hover {
-    background: #9fb7d7;
+    background: #c59b62;
+}
+
+#mainWindow[theme="dark"] QScrollBar::add-page:horizontal,
+#mainWindow[theme="dark"] QScrollBar::sub-page:horizontal,
+QDialog QScrollBar::add-page:horizontal,
+QDialog QScrollBar::sub-page:horizontal {
+    background: #f6ead8;
+    border-radius: 5px;
 }
 
 #mainWindow[theme="dark"] QScrollBar::add-line,

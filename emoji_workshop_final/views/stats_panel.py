@@ -74,7 +74,7 @@ class StatsPanel(QWidget):
         header_layout.addWidget(title_label)
         header_layout.addStretch()
 
-        self.clear_button = QPushButton("🗑  清空历史记录")
+        self.clear_button = QPushButton("🗑 清空历史记录")
         self.clear_button.setObjectName("dangerButton")
         self.clear_button.setToolTip("清空全部使用历史记录，所有统计将回到初始的空状态")
         self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -82,7 +82,7 @@ class StatsPanel(QWidget):
         self.clear_button.clicked.connect(self.on_clear_history_clicked)
         header_layout.addWidget(self.clear_button)
 
-        self.refresh_button = QPushButton("🔄  刷新")
+        self.refresh_button = QPushButton("🔄 刷新")
         self.refresh_button.setObjectName("primaryButton")
         self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)

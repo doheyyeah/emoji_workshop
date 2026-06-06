@@ -59,26 +59,38 @@ class StatsPanel(QWidget):
     def setup_ui(self):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
 
-        # === 顶部标题 + 刷新按钮 ===
-        header_layout = QHBoxLayout()
+        # === 顶部工具栏卡片（浅色卡片风格）===
+        header_card = QFrame()
+        header_card.setObjectName("statsToolbar")
+        header_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        header_layout = QHBoxLayout(header_card)
+        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setSpacing(8)
+
         title_label = QLabel("📊 数据统计")
         title_label.setObjectName("panelTitle")
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+
         self.clear_button = QPushButton("🗑 清空历史记录")
         self.clear_button.setObjectName("dangerButton")
         self.clear_button.setToolTip("清空全部使用历史记录，所有统计将回到初始的空状态")
         self.clear_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_button.setFixedHeight(32)
         self.clear_button.clicked.connect(self.on_clear_history_clicked)
         header_layout.addWidget(self.clear_button)
+
         self.refresh_button = QPushButton("🔄 刷新")
-        self.refresh_button.setObjectName("secondaryButton")
+        self.refresh_button.setObjectName("primaryButton")
         self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.refresh_button.setFixedHeight(32)
         self.refresh_button.clicked.connect(self.on_refresh_clicked)
         header_layout.addWidget(self.refresh_button)
-        outer_layout.addLayout(header_layout)
+
+        outer_layout.addWidget(header_card)
 
         # === 可滚动内容区域（保证图表始终可查看、标题不被裁剪）===
         self.scroll_area = QScrollArea()
@@ -89,7 +101,8 @@ class StatsPanel(QWidget):
 
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(10)
 
         # === 三个核心数字卡片（紧凑、占幅小）===
         cards_layout = QHBoxLayout()
@@ -102,27 +115,49 @@ class StatsPanel(QWidget):
         cards_layout.addWidget(self.card_usage)
         # 卡片整体靠上对齐，避免占据多余的纵向空间
         layout.addLayout(cards_layout)
-        # 卡片与下方「最近7天使用趋势」标题之间留出更充足的间距，避免两者重合
-        layout.addSpacing(28)
+        layout.addSpacing(8)
 
         # === 每日使用趋势（最近7天）===
-        layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
+        trend_label = QLabel("📈 最近 7 天使用趋势")
+        trend_label.setObjectName("chartSectionLabel")
+        layout.addWidget(trend_label)
+
+        trend_card = QFrame()
+        trend_card.setObjectName("chartCard")
+        trend_card_layout = QVBoxLayout(trend_card)
+        trend_card_layout.setContentsMargins(4, 4, 4, 4)
         self.trend_figure = Figure(figsize=(7, 2.8), dpi=90)
         self.trend_figure.patch.set_facecolor(CHART_BG)
         self.trend_canvas = FigureCanvas(self.trend_figure)
         self.trend_canvas.setMinimumHeight(200)
-        layout.addWidget(self.trend_canvas)
+        # Explicitly set the Qt widget background so it matches the figure
+        # even before matplotlib renders (Windows palette may default to dark)
+        self.trend_canvas.setStyleSheet(f"background-color: {CHART_BG}; border: none;")
+        trend_card_layout.addWidget(self.trend_canvas)
+        layout.addWidget(trend_card)
 
         # === 时段分布图（最近24小时）===
-        layout.addWidget(QLabel("⏰ 使用时段分布（最近 24 小时）"))
+        hour_label = QLabel("⏰ 使用时段分布（最近 24 小时）")
+        hour_label.setObjectName("chartSectionLabel")
+        layout.addWidget(hour_label)
+
+        hour_card = QFrame()
+        hour_card.setObjectName("chartCard")
+        hour_card_layout = QVBoxLayout(hour_card)
+        hour_card_layout.setContentsMargins(4, 4, 4, 4)
         self.hour_figure = Figure(figsize=(7, 2.8), dpi=90)
         self.hour_figure.patch.set_facecolor(CHART_BG)
         self.hour_canvas = FigureCanvas(self.hour_figure)
         self.hour_canvas.setMinimumHeight(200)
-        layout.addWidget(self.hour_canvas)
+        self.hour_canvas.setStyleSheet(f"background-color: {CHART_BG}; border: none;")
+        hour_card_layout.addWidget(self.hour_canvas)
+        layout.addWidget(hour_card)
 
         # === 表情使用次数排行榜（展示全部已使用表情）===
-        layout.addWidget(QLabel("🏆 表情使用次数排行榜"))
+        ranking_label = QLabel("🏆 表情使用次数排行榜")
+        ranking_label.setObjectName("chartSectionLabel")
+        layout.addWidget(ranking_label)
+
         self.ranking_list = QListWidget()
         self.ranking_list.setObjectName("rankingList")
         self.ranking_list.setMinimumHeight(220)

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QMovie, QPixmap
 from PyQt6.QtWidgets import (
     QDialog,
@@ -153,16 +153,39 @@ class AIGenerateDialog(QDialog):
     def _setup_gif_tab(self):
         layout = QVBoxLayout(self.gif_tab)
 
-        prompt_group = QGroupBox("描述动态贴纸")
+        prompt_group = QGroupBox("描述动态表情包")
         prompt_layout = QVBoxLayout()
         self.gif_prompt_edit = QTextEdit()
         self.gif_prompt_edit.setMaximumHeight(100)
+        self.gif_prompt_edit.textChanged.connect(self._on_gif_prompt_changed)
         prompt_layout.addWidget(self.gif_prompt_edit)
+        self.gif_prompt_counter = QLabel("0/200")
+        self.gif_prompt_counter.setObjectName("hintLabel")
+        self.gif_prompt_counter.setAlignment(Qt.AlignmentFlag.AlignRight)
+        prompt_layout.addWidget(self.gif_prompt_counter)
         prompt_group.setLayout(prompt_layout)
         layout.addWidget(prompt_group)
 
         settings_group = QGroupBox("生成设置")
         settings_layout = QFormLayout()
+
+        self.gif_apikey_edit = QLineEdit()
+        self.gif_apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        settings_layout.addRow("API Key:", self.gif_apikey_edit)
+
+        self.gif_base_url_edit = QLineEdit()
+        settings_layout.addRow("Base URL:", self.gif_base_url_edit)
+
+        self.gif_model_edit = QLineEdit()
+        settings_layout.addRow("Model:", self.gif_model_edit)
+
+        self.gif_test_btn = QPushButton("测试连接")
+        self.gif_test_btn.setObjectName("secondaryButton")
+        self.gif_test_btn.clicked.connect(self._test_gif_connection)
+        settings_layout.addRow("", self.gif_test_btn)
+
+        self.gif_test_result = QLabel("未测试")
+        settings_layout.addRow("状态:", self.gif_test_result)
 
         gif_save_layout = QHBoxLayout()
         self.gif_save_edit = QLineEdit()
@@ -218,6 +241,19 @@ class AIGenerateDialog(QDialog):
             text = self.prompt_edit.toPlainText()
         self.prompt_counter.setText(f"{len(text)}/200")
 
+    def _on_gif_prompt_changed(self):
+        text = self.gif_prompt_edit.toPlainText()
+        if len(text) > 200:
+            cursor = self.gif_prompt_edit.textCursor()
+            pos = cursor.position()
+            self.gif_prompt_edit.blockSignals(True)
+            self.gif_prompt_edit.setPlainText(text[:200])
+            self.gif_prompt_edit.blockSignals(False)
+            cursor.setPosition(min(pos, 200))
+            self.gif_prompt_edit.setTextCursor(cursor)
+            text = self.gif_prompt_edit.toPlainText()
+        self.gif_prompt_counter.setText(f"{len(text)}/200")
+
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "选择保存文件夹")
         if folder:
@@ -240,9 +276,17 @@ class AIGenerateDialog(QDialog):
         self.base_url_edit.setText(cfg.get("base_url", ""))
         self.model_edit.setText(cfg.get("model", ""))
 
+        replicate_cfg = self.config.get_replicate_config()
+        self.gif_apikey_edit.setText(replicate_cfg.get("api_key", ""))
+        self.gif_base_url_edit.setText(replicate_cfg.get("base_url", ""))
+        self.gif_model_edit.setText(replicate_cfg.get("model", ""))
+
         self.apikey_edit.textChanged.connect(self._on_provider_field_changed)
         self.base_url_edit.textChanged.connect(self._on_provider_field_changed)
         self.model_edit.textChanged.connect(self._on_provider_field_changed)
+        self.gif_apikey_edit.textChanged.connect(self._on_replicate_field_changed)
+        self.gif_base_url_edit.textChanged.connect(self._on_replicate_field_changed)
+        self.gif_model_edit.textChanged.connect(self._on_replicate_field_changed)
 
     def _on_provider_field_changed(self):
         self.config.set_ai_provider_config(
@@ -253,6 +297,59 @@ class AIGenerateDialog(QDialog):
             enabled=True,
         )
         self.config.set("ai_providers.active", "custom")
+
+    def _on_replicate_field_changed(self):
+        self.config.set_replicate_config(
+            base_url=self.gif_base_url_edit.text().strip(),
+            api_key=self.gif_apikey_edit.text().strip(),
+            model=self.gif_model_edit.text().strip(),
+        )
+
+    def _test_gif_connection(self):
+        class ReplicateTestThread(QThread):
+            result = pyqtSignal(bool, str)
+
+            def __init__(self, base_url: str, api_key: str, model: str, parent=None):
+                super().__init__(parent)
+                self.base_url = base_url
+                self.api_key = api_key
+                self.model = model
+
+            def run(self):
+                try:
+                    service = ReplicateService(
+                        base_url=self.base_url,
+                        api_key=self.api_key,
+                        model=self.model,
+                    )
+                    ok, msg = service.test_connection()
+                    self.result.emit(ok, msg)
+                except Exception as exc:
+                    self.result.emit(False, str(exc))
+
+        self._on_replicate_field_changed()
+        self.gif_test_result.setText("测试中...")
+        self.gif_test_result.setStyleSheet("")
+        self.gif_test_result.setToolTip("")
+
+        self.gif_test_thread = ReplicateTestThread(
+            base_url=self.gif_base_url_edit.text().strip(),
+            api_key=self.gif_apikey_edit.text().strip(),
+            model=self.gif_model_edit.text().strip() or "fofr/sticker-maker",
+            parent=self,
+        )
+        self.gif_test_thread.result.connect(self._on_gif_test_result)
+        self.gif_test_thread.start()
+
+    def _on_gif_test_result(self, success: bool, message: str):
+        if success:
+            self.gif_test_result.setText("✅ 连接成功")
+            self.gif_test_result.setStyleSheet("color: #51cf66;")
+            self.gif_test_result.setToolTip("")
+        else:
+            self.gif_test_result.setText("❌ 连接失败")
+            self.gif_test_result.setStyleSheet("color: #ff6b6b;")
+            self.gif_test_result.setToolTip(message)
 
     def _start_generation(self):
         prompt = self.prompt_edit.toPlainText().strip()
@@ -353,16 +450,16 @@ class AIGenerateDialog(QDialog):
             QMessageBox.warning(self, "提示", "请选择保存文件夹")
             return
 
-        replicate_cfg = self.config.get_replicate_config()
-        base_url = (replicate_cfg.get("base_url") or "").strip()
-        api_key = (replicate_cfg.get("api_key") or "").strip()
-        model = (replicate_cfg.get("model") or "fofr/sticker-maker").strip() or "fofr/sticker-maker"
+        self._on_replicate_field_changed()
+        base_url = self.gif_base_url_edit.text().strip()
+        api_key = self.gif_apikey_edit.text().strip()
+        model = self.gif_model_edit.text().strip() or "fofr/sticker-maker"
 
         if not base_url or not api_key:
             QMessageBox.warning(
                 self,
                 "配置缺失",
-                "请先到“设置 → 🤖 AI 推荐 → 🎬 动图生成”填写 Base URL 和 API Key，并测试连接。",
+                "请先在“生成动图”的生成设置中填写 Base URL 和 API Key，并测试连接。",
             )
             return
 

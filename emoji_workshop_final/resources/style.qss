@@ -193,8 +193,8 @@ QDialog QListWidget::item:hover {
 
 #mainWindow[theme="dark"] QListWidget::item:selected,
 QDialog QListWidget::item:selected {
-    background-color: #dce8ff;
-    color: #204f9f;
+    background-color: #ffe0a6;
+    color: #7a4c00;
 }
 
 /* ===== Stats Panel Toolbar ===== */

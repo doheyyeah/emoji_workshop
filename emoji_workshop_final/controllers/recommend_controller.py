@@ -159,10 +159,11 @@ class RecommendController:
     @staticmethod
     def _calc_candidate_count(top_k: int) -> int:
         """根据 top_k 计算候选池大小，并限制在最小/最大阈值内。"""
-        return min(
-            max(top_k * RecommendController.CANDIDATE_MULTIPLIER, RecommendController.MIN_CANDIDATE_COUNT),
-            RecommendController.MAX_CANDIDATE_COUNT,
+        base_count = max(
+            top_k * RecommendController.CANDIDATE_MULTIPLIER,
+            RecommendController.MIN_CANDIDATE_COUNT,
         )
+        return min(base_count, RecommendController.MAX_CANDIDATE_COUNT)
 
     @staticmethod
     def _extract_keywords(context: str) -> list[str]:

@@ -55,9 +55,11 @@ class VisionService:
             raise RuntimeError("视觉精排未配置 API Key")
 
         # 截取候选，默认上限 MAX_IMAGES，允许调用方显式缩小范围
-        limit = self.MAX_IMAGES
-        if max_images and max_images > 0:
-            limit = min(max_images, self.MAX_IMAGES)
+        limit = (
+            min(max_images, self.MAX_IMAGES)
+            if max_images and max_images > 0
+            else self.MAX_IMAGES
+        )
         candidates = candidate_images[:limit]
         if not candidates:
             return []

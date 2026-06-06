@@ -13,7 +13,7 @@ def test_analyze_recommendation_parses_json_fence(monkeypatch):
     monkeypatch.setattr(
         svc,
         "chat",
-        lambda *_, **__: '```json\n{"tags":["开心","不存在"],"keywords":["爆笑","无语"],"image_ids":[3,"7"]}\n```',
+        lambda *_, **__: '```json\n{"tags":["开心","不存在"],"keywords":["爆笑","无语"],"image_ids":[3,"7","bad"]}\n```',
     )
     result = svc.analyze_recommendation(
         context="哈哈哈",

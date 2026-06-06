@@ -158,11 +158,39 @@ class LLMService:
         content = (text or "").strip()
         if not content:
             return ""
-        fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, flags=re.DOTALL)
+        fence = re.search(r"```(?:json)?\s*(.*?)\s*```", content, flags=re.DOTALL)
         if fence:
-            return fence.group(1).strip()
+            fenced = fence.group(1).strip()
+            payload = LLMService._extract_first_json_object(fenced)
+            if payload:
+                return payload
+        return LLMService._extract_first_json_object(content)
+
+    @staticmethod
+    def _extract_first_json_object(content: str) -> str:
         start = content.find("{")
-        end = content.rfind("}")
-        if start == -1 or end == -1 or end <= start:
+        if start == -1:
             return ""
-        return content[start : end + 1]
+        depth = 0
+        in_string = False
+        escaped = False
+        for idx in range(start, len(content)):
+            ch = content[idx]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return content[start : idx + 1]
+        return ""

@@ -222,12 +222,19 @@ QDialog QCheckBox:disabled {
 }
 
 #mainWindow[theme="dark"] QRadioButton::indicator,
-#mainWindow[theme="dark"] QCheckBox::indicator,
-QDialog QRadioButton::indicator,
-QDialog QCheckBox::indicator {
+QDialog QRadioButton::indicator {
     width: 15px;
     height: 15px;
     border-radius: 8px;
+    border: 2px solid #c7d6ea;
+    background-color: #ffffff;
+}
+
+#mainWindow[theme="dark"] QCheckBox::indicator,
+QDialog QCheckBox::indicator {
+    width: 15px;
+    height: 15px;
+    border-radius: 3px;
     border: 2px solid #c7d6ea;
     background-color: #ffffff;
 }

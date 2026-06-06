@@ -10,6 +10,8 @@ class LLMService:
     """通用 LLM 客户端，使用 OpenAI 兼容接口"""
 
     CANDIDATE_SUMMARY_LIMIT = 80  # 限制传给 LLM 的候选摘要数量，避免 prompt 过长导致稳定性下降
+    MAX_CANDIDATE_TAGS = 8
+    MAX_CANDIDATE_KEYWORDS = 8
 
     def __init__(self, base_url: str, api_key: str, model: str):
         self.base_url = base_url.rstrip("/")
@@ -162,8 +164,8 @@ class LLMService:
             "}\n\n"
             f"要求：\n"
             f"1) image_ids 最多 {candidate_count} 个，且必须来自上面的 id；\n"
-            f"2) tags 只能从可用标签中选择，最多 8 个；\n"
-            f"3) keywords 最多 8 个；\n"
+            f"2) tags 只能从可用标签中选择，最多 {self.MAX_CANDIDATE_TAGS} 个；\n"
+            f"3) keywords 最多 {self.MAX_CANDIDATE_KEYWORDS} 个；\n"
             f"4) 只做候选筛选，不做最终排序；\n"
             f"5) 用户输入的关键词/描述/上下文是最高优先级。"
         )
@@ -181,8 +183,8 @@ class LLMService:
             filtered_ids.append(image_id)
 
         parsed["image_ids"] = filtered_ids[:candidate_count]
-        parsed["tags"] = parsed["tags"][:8]
-        parsed["keywords"] = parsed["keywords"][:8]
+        parsed["tags"] = parsed["tags"][: self.MAX_CANDIDATE_TAGS]
+        parsed["keywords"] = parsed["keywords"][: self.MAX_CANDIDATE_KEYWORDS]
         return parsed
 
     @staticmethod

@@ -16,6 +16,10 @@ from utils.config_manager import ConfigManager
 class RecommendController:
     """根据聊天上下文调用 LLM 推荐标签，可选视觉精排后返回图片"""
 
+    CANDIDATE_MULTIPLIER = 5
+    MIN_CANDIDATE_COUNT = 20
+    MAX_CANDIDATE_COUNT = 30
+
     def __init__(
         self,
         db_service: DatabaseService,
@@ -154,7 +158,10 @@ class RecommendController:
 
     @staticmethod
     def _calc_candidate_count(top_k: int) -> int:
-        return min(max(top_k * 5, 20), 30)
+        return min(
+            max(top_k * RecommendController.CANDIDATE_MULTIPLIER, RecommendController.MIN_CANDIDATE_COUNT),
+            RecommendController.MAX_CANDIDATE_COUNT,
+        )
 
     @staticmethod
     def _extract_keywords(context: str) -> list[str]:

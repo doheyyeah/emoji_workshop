@@ -183,6 +183,28 @@ QDialog QListWidget::item:selected {
     color: #204f9f;
 }
 
+/* ===== Stats Panel Toolbar ===== */
+#mainWindow[theme="dark"] #statsToolbar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e0e8f4;
+}
+
+/* ===== Stats Chart Cards ===== */
+#mainWindow[theme="dark"] #chartCard {
+    background-color: #ffffff;
+    border: 1px solid #e0e8f4;
+    border-radius: 14px;
+}
+
+/* ===== Chart Section Labels ===== */
+#chartSectionLabel {
+    color: #4f7fe8;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 2px 0;
+}
+
+/* ===== Stats number cards ===== */
 #statsCard {
     min-height: 60px;
     border-radius: 16px;
@@ -202,6 +224,40 @@ QDialog QListWidget::item:selected {
     color: #4f7fe8;
     font-weight: 800;
     font-size: 15px;
+}
+
+/* ===== Ranking list explicit light styling ===== */
+#mainWindow[theme="dark"] QListWidget#rankingList {
+    background-color: #ffffff;
+    color: #263445;
+    border: 1px solid #dfe8f5;
+    border-radius: 14px;
+    padding: 4px;
+    outline: none;
+}
+
+#mainWindow[theme="dark"] QListWidget#rankingList::item {
+    background-color: transparent;
+    color: #263445;
+    border-radius: 8px;
+    padding: 5px 8px;
+    margin: 1px 2px;
+    border-bottom: 1px solid #eef3fb;
+}
+
+#mainWindow[theme="dark"] QListWidget#rankingList::item:last-child {
+    border-bottom: none;
+}
+
+#mainWindow[theme="dark"] QListWidget#rankingList::item:hover {
+    background-color: #f0f6ff;
+    border-bottom-color: #e0eaff;
+}
+
+#mainWindow[theme="dark"] QListWidget#rankingList::item:selected {
+    background-color: #dfeaff;
+    color: #1d4fa3;
+    border-bottom-color: #cddeff;
 }
 
 /* ===== Option controls ===== */

@@ -76,7 +76,7 @@ class GalleryView(QWidget):
         self.search_btn.setObjectName("primaryButton")
         self.search_btn.clicked.connect(self.do_search)
         self.reset_btn = QPushButton("重置")
-        self.reset_btn.setObjectName("secondaryButton")
+        self.reset_btn.setObjectName("primaryButton")
         self.reset_btn.clicked.connect(self.load_from_database)
         self.clear_history_btn = QPushButton("清空搜索历史")
         self.clear_history_btn.setObjectName("secondaryButton")

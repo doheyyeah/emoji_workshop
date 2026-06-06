@@ -87,6 +87,14 @@ class AIGenerateDialog(QDialog):
         self.model_edit = QLineEdit()
         settings_layout.addRow("Model:", self.model_edit)
 
+        self.image_test_btn = QPushButton("测试连接")
+        self.image_test_btn.setObjectName("secondaryButton")
+        self.image_test_btn.clicked.connect(self._test_image_connection)
+        settings_layout.addRow("", self.image_test_btn)
+
+        self.image_test_result = QLabel("未测试")
+        settings_layout.addRow("状态:", self.image_test_result)
+
         size_layout = QHBoxLayout()
         self.width_spin = QSpinBox()
         self.width_spin.setRange(256, 1024)
@@ -116,7 +124,7 @@ class AIGenerateDialog(QDialog):
         layout.addWidget(settings_group)
 
         btn_row = QHBoxLayout()
-        self.generate_btn = QPushButton("🎨 开始生成")
+        self.generate_btn = QPushButton("🖼 生成静图")
         self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.clicked.connect(self._start_generation)
         self.stop_btn = QPushButton("⏹ 停止生成")
@@ -304,6 +312,59 @@ class AIGenerateDialog(QDialog):
             api_key=self.gif_apikey_edit.text().strip(),
             model=self.gif_model_edit.text().strip(),
         )
+
+    def _test_image_connection(self):
+        class ImageTestThread(QThread):
+            result = pyqtSignal(bool, str)
+
+            def __init__(self, base_url: str, api_key: str, parent=None):
+                super().__init__(parent)
+                self.base_url = base_url
+                self.api_key = api_key
+
+            def run(self):
+                try:
+                    import requests
+
+                    base_url = self.base_url.rstrip("/")
+                    if not base_url:
+                        self.result.emit(False, "未配置 Base URL")
+                        return
+                    if not self.api_key:
+                        self.result.emit(False, "未配置 API Key")
+                        return
+                    resp = requests.get(
+                        f"{base_url}/models",
+                        headers={"Authorization": "Bearer " + self.api_key},
+                        timeout=15,
+                    )
+                    resp.raise_for_status()
+                    self.result.emit(True, "")
+                except Exception as exc:
+                    self.result.emit(False, str(exc))
+
+        self._on_provider_field_changed()
+        self.image_test_result.setText("测试中...")
+        self.image_test_result.setStyleSheet("")
+        self.image_test_result.setToolTip("")
+
+        self.image_test_thread = ImageTestThread(
+            base_url=self.base_url_edit.text().strip(),
+            api_key=self.apikey_edit.text().strip(),
+            parent=self,
+        )
+        self.image_test_thread.result.connect(self._on_image_test_result)
+        self.image_test_thread.start()
+
+    def _on_image_test_result(self, success: bool, message: str):
+        if success:
+            self.image_test_result.setText("✅ 连接成功")
+            self.image_test_result.setStyleSheet("color: #51cf66;")
+            self.image_test_result.setToolTip("")
+        else:
+            self.image_test_result.setText("❌ 连接失败")
+            self.image_test_result.setStyleSheet("color: #ff6b6b;")
+            self.image_test_result.setToolTip(message)
 
     def _test_gif_connection(self):
         class ReplicateTestThread(QThread):

@@ -108,18 +108,28 @@ QWidget#recommendPanel QListWidget::viewport {
     border: 1px solid #c9d8ec;
 }
 
-QListWidget::item {
+QListWidget#thumbList::item,
+QListWidget#rankingList::item {
     background-color: transparent;
     color: #223047;
     border-radius: 8px;
     padding: 4px;
 }
 
-QListWidget::item:hover {
+QListWidget#tagList::item,
+QListWidget#imageTagList::item {
+    color: #223047;
+    border-radius: 8px;
+    padding: 4px;
+}
+
+QListWidget#thumbList::item:hover,
+QListWidget#rankingList::item:hover {
     background-color: #edf4ff;
 }
 
-QListWidget::item:selected {
+QListWidget#thumbList::item:selected,
+QListWidget#rankingList::item:selected {
     background-color: #d9e8ff;
     color: #16345f;
 }

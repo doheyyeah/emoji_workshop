@@ -141,8 +141,20 @@ QDialog QTextEdit:focus {
 #mainWindow[theme="dark"] QComboBox::drop-down,
 QDialog QComboBox::drop-down,
 #reportDialog QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 38px;
     border: none;
-    padding-right: 8px;
+    border-left: 1px solid #d6e4f6;
+    border-top-right-radius: 9px;
+    border-bottom-right-radius: 9px;
+    background-color: #eef6ff;
+}
+
+#mainWindow[theme="dark"] QComboBox::drop-down:hover,
+QDialog QComboBox::drop-down:hover,
+#reportDialog QComboBox::drop-down:hover {
+    background-color: #dcecff;
 }
 
 #mainWindow[theme="dark"] QComboBox::down-arrow,
@@ -154,7 +166,7 @@ QDialog QComboBox::down-arrow,
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
     border-top: 6px solid #5b8def;
-    margin-right: 8px;
+    margin-right: 14px;
 }
 
 #mainWindow[theme="dark"] QComboBox QAbstractItemView,
@@ -191,19 +203,22 @@ QDialog QListWidget::viewport {
     color: #223047;
 }
 
-#mainWindow[theme="dark"] QListWidget::item,
+#mainWindow[theme="dark"] QListWidget#thumbList::item,
+#mainWindow[theme="dark"] QListWidget#rankingList::item,
 QDialog QListWidget::item {
     border-radius: 10px;
     padding: 4px;
     margin: 2px;
 }
 
-#mainWindow[theme="dark"] QListWidget::item:hover,
+#mainWindow[theme="dark"] QListWidget#thumbList::item:hover,
+#mainWindow[theme="dark"] QListWidget#rankingList::item:hover,
 QDialog QListWidget::item:hover {
     background-color: #edf4ff;
 }
 
-#mainWindow[theme="dark"] QListWidget::item:selected,
+#mainWindow[theme="dark"] QListWidget#thumbList::item:selected,
+#mainWindow[theme="dark"] QListWidget#rankingList::item:selected,
 QDialog QListWidget::item:selected {
     background-color: #d9e8ff;
     color: #16345f;

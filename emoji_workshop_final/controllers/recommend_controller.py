@@ -19,6 +19,8 @@ class RecommendController:
     CANDIDATE_MULTIPLIER = 5
     MIN_CANDIDATE_COUNT = 20
     MAX_CANDIDATE_COUNT = 30
+    VISION_BATCH_SIZE = 3
+    VISION_BATCH_ROUNDS = 2
 
     def __init__(
         self,
@@ -122,11 +124,11 @@ class RecommendController:
                         api_key=vision_cfg["api_key"],
                         model=vision_cfg["model"],
                     )
-                    reranked = vision.rerank(
+                    reranked = self._rerank_with_vision_batches(
+                        vision=vision,
                         context=context,
-                        candidate_images=candidates,
+                        candidates=candidates,
                         top_k=top_k,
-                        max_images=len(candidates),
                     )
                     if reranked:
                         selected_rows = reranked
@@ -151,6 +153,9 @@ class RecommendController:
             "tags": list(llm_tags),
             "keywords": list(dict.fromkeys([*llm_keywords, *local_keywords]))[:6],
             "candidate_count": len(candidates),
+            "vision_candidate_count": min(
+                len(candidates), self.VISION_BATCH_SIZE * self.VISION_BATCH_ROUNDS
+            ),
             "fallback": "；".join(dict.fromkeys([note for note in fallback_notes if note])),
             "reason": llm_reason,
         }
@@ -164,6 +169,55 @@ class RecommendController:
             RecommendController.MIN_CANDIDATE_COUNT,
         )
         return min(base_count, RecommendController.MAX_CANDIDATE_COUNT)
+
+    def _rerank_with_vision_batches(
+        self,
+        vision: VisionService,
+        context: str,
+        candidates: list[dict],
+        top_k: int,
+    ) -> list[dict]:
+        """分批调用视觉精排，最多两轮、每轮三张，避免一次发送过多图片。"""
+        if not candidates or top_k <= 0:
+            return []
+
+        max_vision_images = self.VISION_BATCH_SIZE * self.VISION_BATCH_ROUNDS
+        vision_candidates = candidates[:max_vision_images]
+        reranked: list[dict] = []
+        seen_ids: set[int] = set()
+
+        for start in range(0, len(vision_candidates), self.VISION_BATCH_SIZE):
+            if len(reranked) >= top_k:
+                break
+
+            batch = vision_candidates[start : start + self.VISION_BATCH_SIZE]
+            if not batch:
+                continue
+
+            remaining = top_k - len(reranked)
+            batch_top_k = min(len(batch), remaining)
+            batch_reranked = vision.rerank(
+                context=context,
+                candidate_images=batch,
+                top_k=batch_top_k,
+                max_images=len(batch),
+            )
+
+            batch_order = list(batch_reranked or [])
+            batch_seen_ids = {item.get("id") for item in batch_order}
+            batch_order.extend(item for item in batch if item.get("id") not in batch_seen_ids)
+
+            for item in batch_order:
+                image_id = item.get("id")
+                if image_id in seen_ids:
+                    continue
+                reranked.append(item)
+                if image_id is not None:
+                    seen_ids.add(image_id)
+                if len(reranked) >= top_k:
+                    break
+
+        return reranked[:top_k]
 
     @staticmethod
     def _extract_keywords(context: str) -> list[str]:

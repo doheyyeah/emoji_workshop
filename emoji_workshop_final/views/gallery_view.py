@@ -80,7 +80,8 @@ class GalleryView(QWidget):
         self.reset_btn.setMinimumHeight(32)
         self.reset_btn.clicked.connect(self.reset_search)
         self.clear_history_btn = QPushButton("🧹 清空历史")
-        self.clear_history_btn.setObjectName("secondaryButton")
+        # 和下方“清空”按钮使用同一套蓝灰清理按钮样式，保持视觉一致。
+        self.clear_history_btn.setObjectName("dangerButton")
         self.clear_history_btn.setMinimumHeight(32)
         self.clear_history_btn.setToolTip("清空搜索历史（只清历史，不清图片）")
         self.clear_history_btn.clicked.connect(self._clear_search_history)

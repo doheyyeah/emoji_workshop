@@ -222,12 +222,15 @@ class RecommendController:
             tags = image.get("tags", []) or []
             name = (image.get("name") or "").lower()
             tags_l = [str(tag).lower() for tag in tags]
+            tag_text = " ".join(tags_l)
             combined = " ".join([name, *tags_l])
 
             score = 0.0
             score += 2.5 * sum(1 for tag in tags_l if tag in llm_tag_set)
-            score += 1.5 * sum(1 for kw in keyword_set if kw in combined)
-            score += 1.0 * sum(1 for kw in local_keyword_set if kw in combined)
+            score += 2.0 * sum(1 for kw in keyword_set if kw in tag_text)
+            score += 1.6 * sum(1 for kw in local_keyword_set if kw in tag_text)
+            score += 1.2 * sum(1 for kw in keyword_set if kw in name)
+            score += 0.8 * sum(1 for kw in local_keyword_set if kw in name)
             score += id_boost_map.get(image.get("id"), 0.0)
             score += max(0.0, 0.3 - idx * 0.01)  # 小幅保留最近图片混入
 

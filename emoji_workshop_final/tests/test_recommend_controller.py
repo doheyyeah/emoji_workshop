@@ -98,3 +98,20 @@ def test_build_candidate_scope_prioritizes_llm_ids():
     )
     assert seeded == 1
     assert [item["id"] for item in selected] == [3, 1, 2]
+
+
+def test_tag_prompt_match_gets_higher_weight_than_name_only_match():
+    images = [
+        {"id": 1, "name": "快乐", "file_path": "/tmp/1.png", "file_type": "png", "tags": []},
+        {"id": 2, "name": "普通", "file_path": "/tmp/2.png", "file_type": "png", "tags": ["快乐"]},
+    ]
+    controller = RecommendController(_FakeDB(images), config_manager=_FakeConfig())
+    ranked = controller._rank_candidates(
+        context="快乐",
+        all_images=images,
+        llm_tags=[],
+        llm_keywords=[],
+        llm_image_ids=[],
+        local_keywords=["快乐"],
+    )
+    assert ranked[0]["id"] == 2

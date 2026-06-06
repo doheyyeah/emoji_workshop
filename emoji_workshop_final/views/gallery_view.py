@@ -98,7 +98,7 @@ class GalleryView(QWidget):
         self.import_btn.clicked.connect(self.import_folder)
         
         self.clear_btn = QPushButton("🗑️ 清空")
-        self.clear_btn.setObjectName("primaryButton")
+        self.clear_btn.setObjectName("dangerButton")
         self.clear_btn.clicked.connect(self.clear_all)
         
         self.stats_label = QLabel("图片: 0 | 总大小: 0 MB | 缓存: 0")

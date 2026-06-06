@@ -24,6 +24,13 @@ from services.database_service import DatabaseService
 from utils.config_manager import ConfigManager
 
 
+CHART_BG = "#ffffff"
+CHART_TEXT = "#526174"
+CHART_GRID = "#dce7f5"
+CHART_BLUE = "#5b8def"
+CHART_BLUE_DARK = "#4169b1"
+
+
 class StatsPanel(QWidget):
     """数据统计面板：核心指标 + 趋势图 + 时段分布 + 使用次数排行榜
 
@@ -100,7 +107,7 @@ class StatsPanel(QWidget):
         # === 每日使用趋势（最近7天）===
         layout.addWidget(QLabel("📈 最近 7 天使用趋势"))
         self.trend_figure = Figure(figsize=(7, 2.8), dpi=90)
-        self.trend_figure.patch.set_facecolor('#1e1e1e')
+        self.trend_figure.patch.set_facecolor(CHART_BG)
         self.trend_canvas = FigureCanvas(self.trend_figure)
         self.trend_canvas.setMinimumHeight(200)
         layout.addWidget(self.trend_canvas)
@@ -108,7 +115,7 @@ class StatsPanel(QWidget):
         # === 时段分布图（最近24小时）===
         layout.addWidget(QLabel("⏰ 使用时段分布（最近 24 小时）"))
         self.hour_figure = Figure(figsize=(7, 2.8), dpi=90)
-        self.hour_figure.patch.set_facecolor('#1e1e1e')
+        self.hour_figure.patch.set_facecolor(CHART_BG)
         self.hour_canvas = FigureCanvas(self.hour_figure)
         self.hour_canvas.setMinimumHeight(200)
         layout.addWidget(self.hour_canvas)
@@ -227,11 +234,12 @@ class StatsPanel(QWidget):
     def _refresh_trend(self):
         """最近7天使用趋势折线图（本地时间）"""
         self.trend_figure.clear()
+        self.trend_figure.patch.set_facecolor(CHART_BG)
         ax = self.trend_figure.add_subplot(111)
-        ax.set_facecolor('#1e1e1e')
-        ax.tick_params(colors='white', labelsize=8)
-        ax.xaxis.label.set_color('white')
-        ax.yaxis.label.set_color('white')
+        ax.set_facecolor(CHART_BG)
+        ax.tick_params(colors=CHART_TEXT, labelsize=8)
+        ax.xaxis.label.set_color(CHART_TEXT)
+        ax.yaxis.label.set_color(CHART_TEXT)
 
         # 生成最近7天的日期列表
         today = datetime.now().date()
@@ -255,12 +263,13 @@ class StatsPanel(QWidget):
             pass
 
         values = [counts.get(d, 0) for d in dates]
-        ax.plot(dates, values, marker='o', color='#4a9eff', linewidth=2, markersize=5)
-        ax.fill_between(dates, values, alpha=0.2, color='#4a9eff')
+        ax.plot(dates, values, marker='o', color=CHART_BLUE, linewidth=2, markersize=5)
+        ax.fill_between(dates, values, alpha=0.16, color=CHART_BLUE)
         ax.set_xticks(range(len(dates)))
         ax.set_xticklabels(dates)
+        ax.grid(axis='y', color=CHART_GRID, linewidth=0.8, alpha=0.8)
         for spine in ax.spines.values():
-            spine.set_color('#3e3e42')
+            spine.set_color(CHART_GRID)
         # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部被裁剪
         self.trend_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.18)
         self.trend_canvas.draw()
@@ -274,9 +283,10 @@ class StatsPanel(QWidget):
         以便实时反映用户「最近这一天」的活跃时段。
         """
         self.hour_figure.clear()
+        self.hour_figure.patch.set_facecolor(CHART_BG)
         ax = self.hour_figure.add_subplot(111)
-        ax.set_facecolor('#1e1e1e')
-        ax.tick_params(colors='white', labelsize=8)
+        ax.set_facecolor(CHART_BG)
+        ax.tick_params(colors=CHART_TEXT, labelsize=8)
 
         now = datetime.now()
         window_start = now - timedelta(hours=24)
@@ -291,14 +301,15 @@ class StatsPanel(QWidget):
             pass
 
         hours = list(range(24))
-        colors = ['#4a9eff' if h in range(9, 22) else '#3a6ea8' for h in hours]
+        colors = [CHART_BLUE if h in range(9, 22) else CHART_BLUE_DARK for h in hours]
         ax.bar(hours, hour_counts, color=colors, edgecolor='none')
         # 横坐标细化到每一个小时（0时…23时），便于观察每小时的使用情况
         ax.set_xticks(hours)
-        ax.set_xticklabels([f"{h}时" for h in hours], color='white', fontsize=7, rotation=90)
+        ax.set_xticklabels([f"{h}时" for h in hours], color=CHART_TEXT, fontsize=7, rotation=90)
+        ax.grid(axis='y', color=CHART_GRID, linewidth=0.8, alpha=0.8)
         ax.set_xlim(-0.5, 23.5)
         for spine in ax.spines.values():
-            spine.set_color('#3e3e42')
+            spine.set_color(CHART_GRID)
         # 标题由上方 QLabel 提供，此处仅留出充足边距，避免顶部/底部被裁剪
         self.hour_figure.subplots_adjust(left=0.08, right=0.97, top=0.95, bottom=0.22)
         self.hour_canvas.draw()

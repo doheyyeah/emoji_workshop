@@ -154,6 +154,7 @@ class MainWindow(QMainWindow):
 
         # 右侧：标签面板 + 智能推荐面板（固定纵向布局，外层支持滚轮查看）
         self.right_container = QWidget()
+        self.right_container.setObjectName("rightContainer")
         right_layout = QVBoxLayout(self.right_container)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
@@ -171,6 +172,7 @@ class MainWindow(QMainWindow):
         right_layout.addStretch(1)
 
         self.right_scroll_area = QScrollArea()
+        self.right_scroll_area.setObjectName("rightScrollArea")
         self.right_scroll_area.setWidgetResizable(True)
         self.right_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
         self.right_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

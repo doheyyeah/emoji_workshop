@@ -76,10 +76,10 @@ class GalleryView(QWidget):
         self.search_btn.setObjectName("primaryButton")
         self.search_btn.clicked.connect(self.do_search)
         self.reset_btn = QPushButton("重置")
-        self.reset_btn.setObjectName("secondaryButton")
+        self.reset_btn.setObjectName("primaryButton")
         self.reset_btn.clicked.connect(self.load_from_database)
         self.clear_history_btn = QPushButton("清空搜索历史")
-        self.clear_history_btn.setObjectName("secondaryButton")
+        self.clear_history_btn.setObjectName("primaryButton")
         self.clear_history_btn.setToolTip("清空搜索历史（只清历史，不清图片）")
         self.clear_history_btn.clicked.connect(self._clear_search_history)
         
@@ -98,7 +98,7 @@ class GalleryView(QWidget):
         self.import_btn.clicked.connect(self.import_folder)
         
         self.clear_btn = QPushButton("🗑️ 清空")
-        self.clear_btn.setObjectName("dangerButton")
+        self.clear_btn.setObjectName("primaryButton")
         self.clear_btn.clicked.connect(self.clear_all)
         
         self.stats_label = QLabel("图片: 0 | 总大小: 0 MB | 缓存: 0")

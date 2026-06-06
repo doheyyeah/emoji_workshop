@@ -32,6 +32,9 @@ class TagPanel(QWidget):
         layout = QVBoxLayout(self)
 
         # === 模式切换 ===
+        # 原来「筛选模式 / 打标签模式 / 并集 / 交集」全部挤在同一行，
+        # 右侧面板较窄时会把“打标签模式”的最后一个字遮住。
+        # 拆成两行后，模式选择和筛选逻辑选择互不挤压。
         mode_layout = QHBoxLayout()
         self.filter_mode_radio = QRadioButton("🔍 筛选模式")
         self.tag_mode_radio = QRadioButton("✏️ 打标签模式")
@@ -44,14 +47,17 @@ class TagPanel(QWidget):
         mode_layout.addWidget(self.filter_mode_radio)
         mode_layout.addWidget(self.tag_mode_radio)
         mode_layout.addStretch()
+        layout.addLayout(mode_layout)
 
+        match_layout = QHBoxLayout()
+        match_layout.addStretch()
         self.union_radio = QRadioButton("并集")
         self.intersect_radio = QRadioButton("交集")
         self.union_radio.setChecked(True)
         self.union_radio.toggled.connect(self._on_match_mode_changed)
-        mode_layout.addWidget(self.union_radio)
-        mode_layout.addWidget(self.intersect_radio)
-        layout.addLayout(mode_layout)
+        match_layout.addWidget(self.union_radio)
+        match_layout.addWidget(self.intersect_radio)
+        layout.addLayout(match_layout)
 
         self.mode_hint_label = QLabel("已选中 0 个标签作筛选条件")
         self.mode_hint_label.setObjectName("hintLabel")

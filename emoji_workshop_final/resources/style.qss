@@ -390,6 +390,26 @@ QDialog QGroupBox::title {
     background-color: #f5f8fc;
 }
 
+#aiGenerateDialog #aiSettingsGroup QLabel {
+    font-size: 12px;
+}
+
+#aiGenerateDialog #aiSettingsGroup QLineEdit,
+#aiGenerateDialog #aiSettingsGroup QComboBox,
+#aiGenerateDialog #aiSettingsGroup QSpinBox {
+    font-size: 12px;
+    min-height: 20px;
+    padding: 6px 8px;
+    border-radius: 8px;
+}
+
+#aiGenerateDialog #aiSettingsGroup QPushButton {
+    font-size: 12px;
+    min-height: 20px;
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
 #mainWindow[theme="dark"] QSplitter::handle {
     background-color: #dbe6f5;
 }

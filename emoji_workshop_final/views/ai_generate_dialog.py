@@ -61,6 +61,7 @@ class AIGenerateDialog(QDialog):
         self.gif_test_thread = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
+        self.setObjectName("aiGenerateDialog")
         self.setMinimumSize(650, 760)
         self._setup_ui()
         self._load_settings()
@@ -98,8 +99,9 @@ class AIGenerateDialog(QDialog):
         layout.addWidget(prompt_group)
 
         settings_group = QGroupBox("生成设置")
+        settings_group.setObjectName("aiSettingsGroup")
         settings_layout = QFormLayout()
-        settings_layout.setSpacing(12)
+        settings_layout.setSpacing(8)
 
         self.apikey_edit = QLineEdit()
         self.apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -202,8 +204,9 @@ class AIGenerateDialog(QDialog):
         layout.addWidget(prompt_group)
 
         settings_group = QGroupBox("生成设置")
+        settings_group.setObjectName("aiSettingsGroup")
         settings_layout = QFormLayout()
-        settings_layout.setSpacing(12)
+        settings_layout.setSpacing(8)
 
         self.gif_apikey_edit = QLineEdit()
         self.gif_apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)

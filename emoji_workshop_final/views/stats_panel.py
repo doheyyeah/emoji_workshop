@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem, QFrame, QScrollArea, QPushButton, QSizePolicy,
     QMessageBox
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QEvent
 from PyQt6.QtGui import QPixmap, QIcon, QFont, QColor, QFontMetrics
 
 # Matplotlib 嵌入 PyQt6
@@ -84,7 +84,7 @@ class StatsPanel(QWidget):
 
         self.refresh_button = QPushButton("🔄 刷新")
         self.refresh_button.setObjectName("primaryButton")
-        self.refresh_button.setToolTip("刷新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
+        self.refresh_button.setToolTip("���新「使用时段分布（最近24小时）」；跨天时同时刷新「最近7天使用趋势」")
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.refresh_button.setFixedHeight(32)
         self.refresh_button.clicked.connect(self.on_refresh_clicked)
@@ -133,6 +133,7 @@ class StatsPanel(QWidget):
         # Explicitly set the Qt widget background so it matches the figure
         # even before matplotlib renders (Windows palette may default to dark)
         self.trend_canvas.setStyleSheet(f"background-color: {CHART_BG}; border: none;")
+        self.trend_canvas.installEventFilter(self)
         trend_card_layout.addWidget(self.trend_canvas)
         layout.addWidget(trend_card)
 
@@ -150,6 +151,7 @@ class StatsPanel(QWidget):
         self.hour_canvas = FigureCanvas(self.hour_figure)
         self.hour_canvas.setMinimumHeight(200)
         self.hour_canvas.setStyleSheet(f"background-color: {CHART_BG}; border: none;")
+        self.hour_canvas.installEventFilter(self)
         hour_card_layout.addWidget(self.hour_canvas)
         layout.addWidget(hour_card)
 
@@ -165,6 +167,10 @@ class StatsPanel(QWidget):
         self.ranking_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.ranking_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.ranking_list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        # QListWidget/Matplotlib 画布会优先吃掉鼠标滚轮事件；转交给外层 QScrollArea，
+        # 这样鼠标停在排行榜或图表上时也能滚动整个「数据统计」页面。
+        self.ranking_list.installEventFilter(self)
+        self.ranking_list.viewport().installEventFilter(self)
         layout.addWidget(self.ranking_list)
 
         # === 最近刷新时间 ===
@@ -174,6 +180,24 @@ class StatsPanel(QWidget):
 
         layout.addStretch()
         self.scroll_area.setWidget(content)
+
+    def eventFilter(self, watched, event):
+        """把子控件吞掉的滚轮事件转交给外层滚动区域。"""
+        if event.type() == QEvent.Type.Wheel and hasattr(self, "scroll_area"):
+            wheel_targets = {
+                self.ranking_list,
+                self.ranking_list.viewport(),
+                self.trend_canvas,
+                self.hour_canvas,
+            }
+            if watched in wheel_targets:
+                scrollbar = self.scroll_area.verticalScrollBar()
+                delta = event.angleDelta().y()
+                if delta:
+                    scrollbar.setValue(scrollbar.value() - delta)
+                    event.accept()
+                    return True
+        return super().eventFilter(watched, event)
 
     def _make_card(self, title: str, value: str) -> QFrame:
         """创建紧凑统计数字卡片（占幅较小）"""

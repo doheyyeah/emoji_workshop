@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import requests
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QMovie, QPixmap
 from PyQt6.QtWidgets import (
@@ -40,6 +41,7 @@ class AIGenerateDialog(QDialog):
         self.sticker_path = None
         self.sticker_worker = None
         self.sticker_movie = None
+        self.image_test_thread = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
         self.setMinimumSize(650, 760)
@@ -314,6 +316,9 @@ class AIGenerateDialog(QDialog):
         )
 
     def _test_image_connection(self):
+        if self.image_test_thread and self.image_test_thread.isRunning():
+            return
+
         class ImageTestThread(QThread):
             result = pyqtSignal(bool, str)
 
@@ -324,8 +329,6 @@ class AIGenerateDialog(QDialog):
 
             def run(self):
                 try:
-                    import requests
-
                     base_url = self.base_url.rstrip("/")
                     if not base_url:
                         self.result.emit(False, "未配置 Base URL")
@@ -344,6 +347,7 @@ class AIGenerateDialog(QDialog):
                     self.result.emit(False, str(exc))
 
         self._on_provider_field_changed()
+        self.image_test_btn.setEnabled(False)
         self.image_test_result.setText("测试中...")
         self.image_test_result.setStyleSheet("")
         self.image_test_result.setToolTip("")
@@ -354,9 +358,11 @@ class AIGenerateDialog(QDialog):
             parent=self,
         )
         self.image_test_thread.result.connect(self._on_image_test_result)
+        self.image_test_thread.finished.connect(lambda: setattr(self, "image_test_thread", None))
         self.image_test_thread.start()
 
     def _on_image_test_result(self, success: bool, message: str):
+        self.image_test_btn.setEnabled(True)
         if success:
             self.image_test_result.setText("✅ 连接成功")
             self.image_test_result.setStyleSheet("color: #51cf66;")

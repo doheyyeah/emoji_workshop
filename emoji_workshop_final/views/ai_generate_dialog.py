@@ -180,7 +180,7 @@ class AIGenerateDialog(QDialog):
     def _setup_gif_tab(self):
         layout = QVBoxLayout(self.gif_tab)
 
-        prompt_group = QGroupBox("描述动态表情包")
+        prompt_group = QGroupBox("描述你的表情包")
         prompt_layout = QVBoxLayout()
         self.gif_prompt_edit = QTextEdit()
         self.gif_prompt_edit.setMaximumHeight(100)

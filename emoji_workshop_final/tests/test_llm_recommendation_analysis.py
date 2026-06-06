@@ -62,3 +62,26 @@ def test_select_candidate_images_filters_invalid_image_ids(monkeypatch):
     assert result["image_ids"] == [2, 1]
     assert result["tags"] == ["开心"]
     assert result["keywords"] == ["困", "下班"]
+
+
+def test_select_candidate_images_sends_full_library_names(monkeypatch):
+    svc = LLMService("https://example.com", "k", "m")
+    captured = {}
+
+    def fake_chat(prompt, *_, **__):
+        captured["prompt"] = prompt
+        return '{"image_ids":[85],"tags":[],"keywords":[],"reason":"按名称匹配"}'
+
+    monkeypatch.setattr(svc, "chat", fake_chat)
+    summaries = [
+        {"id": idx, "name": f"照片{idx}", "tags": []}
+        for idx in range(1, 86)
+    ]
+    result = svc.select_candidate_images(
+        context="照片85",
+        image_summaries=summaries,
+        available_tags=[],
+        candidate_count=5,
+    )
+    assert "id=85, name=照片85" in captured["prompt"]
+    assert result["image_ids"] == [85]

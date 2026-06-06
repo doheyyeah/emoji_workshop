@@ -10,7 +10,6 @@ import requests
 class LLMService:
     """通用 LLM 客户端，使用 OpenAI 兼容接口"""
 
-    CANDIDATE_SUMMARY_LIMIT = 80  # 限制传给 LLM 的候选摘要数量，避免 prompt 过长导致稳定性下降
     MAX_CANDIDATE_TAGS = 8
     MAX_CANDIDATE_KEYWORDS = 8
     CANDIDATE_SELECTION_TIMEOUT = 45
@@ -127,14 +126,8 @@ class LLMService:
         available_tags: list[str],
         candidate_count: int = 20,
     ) -> dict:
-        """让 LLM 只做候选范围筛选（不做最终排序）"""
-        if len(image_summaries) > self.CANDIDATE_SUMMARY_LIMIT:
-            logging.debug(
-                "[LLMService] 候选摘要过多，已截断到 %s 条（原始 %s 条）",
-                self.CANDIDATE_SUMMARY_LIMIT,
-                len(image_summaries),
-            )
-        summaries = image_summaries[: self.CANDIDATE_SUMMARY_LIMIT]
+        """让 LLM 基于整个图片库的名称和标签只做候选范围筛选（不做最终排序）"""
+        summaries = image_summaries
         summary_lines = []
         valid_ids: set[int] = set()
         for item in summaries:
@@ -156,6 +149,7 @@ class LLMService:
         system = (
             "你是表情包候选筛选助手。"
             "你只能基于用户输入、表情包名称、已有标签筛选候选范围。"
+            "请优先根据表情包名称做初筛，标签只作为辅助线索。"
             "不要做最终排序判断，不要假装看到了图片内容。"
         )
         prompt = (
@@ -174,8 +168,10 @@ class LLMService:
             f"1) image_ids 最多 {candidate_count} 个，且必须来自上面的 id；\n"
             f"2) tags 只能从可用标签中选择，最多 {self.MAX_CANDIDATE_TAGS} 个；\n"
             f"3) keywords 最多 {self.MAX_CANDIDATE_KEYWORDS} 个；\n"
-            f"4) 只做候选筛选，不做最终排序；\n"
-            f"5) 用户输入的关键词/描述/上下文是最高优先级。"
+            f"4) 初筛范围是上面列出的整个图片库，不要只关注前几项；\n"
+            f"5) 主要根据表情包名称判断是否相关，标签作为辅助；\n"
+            f"6) 只做候选筛选，不做最终排序；\n"
+            f"7) 用户输入的关键词/描述/上下文是最高优先级。"
         )
         response = self.chat(
             prompt,

@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import requests
 from PyQt6.QtCore import QThread, Qt, pyqtSignal
 from PyQt6.QtGui import QMovie, QPixmap
 from PyQt6.QtWidgets import (
@@ -59,6 +58,7 @@ class AIGenerateDialog(QDialog):
         self.sticker_worker = None
         self.sticker_movie = None
         self.image_test_thread = None
+        self.gif_test_thread = None
 
         self.setWindowTitle("🎨 AI 生成表情包")
         self.setMinimumSize(650, 760)
@@ -346,20 +346,7 @@ class AIGenerateDialog(QDialog):
         api_key = self.apikey_edit.text().strip()
 
         def test_connection():
-            if not base_url:
-                return False, "未配置 Base URL"
-            if not api_key:
-                return False, "未配置 API Key"
-            try:
-                resp = requests.get(
-                    f"{base_url}/models",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    timeout=15,
-                )
-                resp.raise_for_status()
-                return True, ""
-            except requests.exceptions.RequestException as exc:
-                return False, f"连接失败，请检查 Base URL、API Key 或网络状态：{exc}"
+            return self.ai.providers["custom"].test_connection(base_url, api_key)
 
         self.image_test_thread = ConnectionTestThread(test_connection, self)
         self.image_test_thread.result.connect(self._on_image_test_result)
@@ -381,7 +368,11 @@ class AIGenerateDialog(QDialog):
             self.image_test_result.setToolTip(message)
 
     def _test_gif_connection(self):
+        if self.gif_test_thread and self.gif_test_thread.isRunning():
+            return
+
         self._on_replicate_field_changed()
+        self.gif_test_btn.setEnabled(False)
         self.gif_test_result.setText("测试中...")
         self.gif_test_result.setStyleSheet("")
         self.gif_test_result.setToolTip("")
@@ -396,9 +387,14 @@ class AIGenerateDialog(QDialog):
 
         self.gif_test_thread = ConnectionTestThread(test_connection, self)
         self.gif_test_thread.result.connect(self._on_gif_test_result)
+        self.gif_test_thread.finished.connect(self._cleanup_gif_test_thread)
         self.gif_test_thread.start()
 
+    def _cleanup_gif_test_thread(self):
+        self.gif_test_thread = None
+
     def _on_gif_test_result(self, success: bool, message: str):
+        self.gif_test_btn.setEnabled(True)
         if success:
             self.gif_test_result.setText("✅ 连接成功")
             self.gif_test_result.setStyleSheet("color: #51cf66;")

@@ -80,8 +80,12 @@ class AIGenerateDialog(QDialog):
 
     def _setup_image_tab(self):
         layout = QVBoxLayout(self.image_tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
+
         prompt_group = QGroupBox("描述你的表情包")
         prompt_layout = QVBoxLayout()
+        prompt_layout.setSpacing(10)
         self.prompt_edit = QTextEdit()
         self.prompt_edit.setMaximumHeight(100)
         self.prompt_edit.textChanged.connect(self._on_prompt_changed)
@@ -95,6 +99,7 @@ class AIGenerateDialog(QDialog):
 
         settings_group = QGroupBox("生成设置")
         settings_layout = QFormLayout()
+        settings_layout.setSpacing(12)
 
         self.apikey_edit = QLineEdit()
         self.apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
@@ -179,9 +184,12 @@ class AIGenerateDialog(QDialog):
 
     def _setup_gif_tab(self):
         layout = QVBoxLayout(self.gif_tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(15, 15, 15, 15)
 
         prompt_group = QGroupBox("描述你的表情包")
         prompt_layout = QVBoxLayout()
+        prompt_layout.setSpacing(10)
         self.gif_prompt_edit = QTextEdit()
         self.gif_prompt_edit.setMaximumHeight(100)
         self.gif_prompt_edit.textChanged.connect(self._on_gif_prompt_changed)
@@ -195,6 +203,7 @@ class AIGenerateDialog(QDialog):
 
         settings_group = QGroupBox("生成设置")
         settings_layout = QFormLayout()
+        settings_layout.setSpacing(12)
 
         self.gif_apikey_edit = QLineEdit()
         self.gif_apikey_edit.setEchoMode(QLineEdit.EchoMode.Password)
